@@ -249,6 +249,26 @@ A documentacao interativa estara disponivel em:
 
 ---
 
+## Modelagem do Banco de Dados
+
+O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. A modelagem foi projetada para suportar autenticação, controle de acesso e gerenciamento de usuários com eficiência.
+
+![Modelo do Banco de Dados](./db_model.png)
+
+### Tabelas
+
+| Tabela | Partition Key | Descrição |
+|---|---|---|
+| `auth_users` | `id` (UUID) | Armazena usuários com credenciais |
+| `access_level` | `id` (UUID) | Define os níveis de acesso disponíveis no sistema (user, admin, exhibitionist) |
+
+### Decisões de Modelagem
+
+- O atributo `access_levels` em `user` armazena a referência ao nível de acesso do usuário (FK lógica, já que o DynamoDB não suporta chaves estrangeiras nativas).
+- Palavras reservadas do DynamoDB (como `name`) foram substituídas por alternativas semânticas equivalentes (`title`) para evitar conflitos em expressões de consulta.
+
+---
+
 ## Seguranca — OAuth2 + JWT
 
 O servico implementa o fluxo **OAuth2 Password Bearer** nativo do FastAPI:
