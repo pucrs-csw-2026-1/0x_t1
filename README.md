@@ -170,8 +170,8 @@ auth-service/
 ### 1. Clone e entre no diretorio
 
 ```bash
-git clone https://github.com/<org>/auth-service.git
-cd auth-service
+git clone https://github.com/pucrs-csw-2026-1/0x_t1.git
+cd backend
 ```
 
 ### 2. Crie e ative um ambiente virtual
@@ -207,7 +207,7 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 
 AWS_REGION=us-east-1
 DYNAMODB_ENDPOINT_URL=http://localhost:8000   # apenas para DynamoDB Local
-DYNAMODB_TABLE_USERS=auth_users
+DYNAMODB_TABLE_USERS=user
 ```
 
 A configuracao e carregada via `pydantic-settings` (`BaseSettings`), com validacao automatica de tipos e valores:
@@ -223,7 +223,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     aws_region: str = "us-east-1"
     dynamodb_endpoint_url: str | None = None
-    dynamodb_table_users: str = "auth_users"
+    dynamodb_table_users: str = "user"
 
     model_config = SettingsConfigDict(env_file=".env")
 ```
@@ -239,13 +239,15 @@ docker run -d -p 8000:8000 amazon/dynamodb-local
 ## Executando a Aplicacao
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --port 8080
 ```
+
+> A porta `8000` e reservada para o DynamoDB Local. A API roda em `8080` para evitar conflito.
 
 A documentacao interativa estara disponivel em:
 
-- Swagger UI: <http://localhost:8000/docs>
-- ReDoc: <http://localhost:8000/redoc>
+- Swagger UI: <http://localhost:8080/docs>
+- ReDoc: <http://localhost:8080/redoc>
 
 ---
 
@@ -253,18 +255,18 @@ A documentacao interativa estara disponivel em:
 
 O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. A modelagem foi projetada para suportar autenticação, controle de acesso e gerenciamento de usuários com eficiência.
 
-![Modelo do Banco de Dados](./db_model.png)
+![Modelo do Banco de Dados](./db/db_model.png)
 
 ### Tabelas
 
 | Tabela | Partition Key | Descrição |
 |---|---|---|
-| `auth_users` | `id` (UUID) | Armazena usuários com credenciais |
-| `access_level` | `id` (UUID) | Define os níveis de acesso disponíveis no sistema (user, admin, exhibitionist) |
+| `user` | `id` (UUID) | Armazena usuários cadastrados no sistema |
+| `access_level` | `id` (UUID) | Define os níveis de acesso disponíveis no sistema |
 
 ### Decisões de Modelagem
 
-- O atributo `access_levels` em `user` armazena a referência ao nível de acesso do usuário (FK lógica, já que o DynamoDB não suporta chaves estrangeiras nativas).
+- O atributo `access_level` em `user` armazena uma lista de UUIDs referenciando a tabela `access_level` (FK lógica, já que o DynamoDB não suporta chaves estrangeiras nativas).
 - Palavras reservadas do DynamoDB (como `name`) foram substituídas por alternativas semânticas equivalentes (`title`) para evitar conflitos em expressões de consulta.
 
 ---
@@ -326,19 +328,24 @@ Cliente                         Auth Service
 ```json
 // Request body
 {
-  "name": "Maria Silva",
+  "username": "maria.silva",
+  "first_name": "Maria",
+  "last_name": "Silva",
   "email": "maria@example.com",
-  "password": "S3nh@Forte!",
-  "roles": ["user"]
+  "password": "Xp7#kM2$vLq9!Rt",
+  "access_level": ["c32d8b45-92fe-44f6-8b61-42c2107dfe87"]
 }
 
 // Response 201
 {
-  "id": "uuid-gerado",
-  "name": "Maria Silva",
+  "id": "acde070d-8c4c-4f0d-9d8a-162843c10333",
+  "username": "maria.silva",
+  "first_name": "Maria",
+  "last_name": "Silva",
   "email": "maria@example.com",
-  "roles": ["user"],
-  "created_at": "2024-01-15T10:30:00Z"
+  "is_active": true,
+  "access_level": ["c32d8b45-92fe-44f6-8b61-42c2107dfe87"],
+  "created_at": "2026-04-11T10:30:00Z"
 }
 ```
 
@@ -346,7 +353,7 @@ Cliente                         Auth Service
 
 ```
 // Request: application/x-www-form-urlencoded (OAuth2PasswordRequestForm)
-username=maria@example.com&password=S3nh@Forte!
+username=maria@example.com&password=Xp7#kM2$vLq9!Rt
 
 // Response 200
 {
