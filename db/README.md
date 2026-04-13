@@ -43,7 +43,7 @@ Como o DynamoDB não impõe regras de esquema, toda a validação é responsabil
 
 - Unicidade de `username` e `email`;
 - Formato válido de e-mail e tamanhos mínimos/máximos de campos de texto;
-- Senha com mínimo de 15 caracteres, contendo letras maiúsculas, minúsculas, números e caracteres especiais (validada antes do hash);
+- Senha com mínimo de 8 caracteres, contendo letras maiúsculas, minúsculas, números e caracteres especiais (validada antes do hash);
 - Obrigatoriedade dos campos marcados como não nulos na modelagem;
 - Integridade referencial entre `user.access_level` e a tabela `access_level`.
 
