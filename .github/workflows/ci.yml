@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    working-directory: ./backend
+
 jobs:
   lint:
     name: Ruff (lint + format)
