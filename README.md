@@ -16,7 +16,7 @@ Servico RESTful responsavel pelo cadastro de usuarios, autenticacao via **OAuth2
 
 | Funcionalidade | Descricao |
 |---|---|
-| **Cadastro de usuarios** | Criacao de conta com nome, e-mail, senha (hash bcrypt) e perfil de permissoes |
+| **Cadastro de usuarios** | Criacao de conta com username, nome, sobrenome, e-mail, senha (hash bcrypt) e niveis de acesso |
 | **Autenticacao OAuth2** | Fluxo OAuth2 Password Bearer com emissao de tokens JWT |
 | **Emissao de tokens** | Access token e refresh token com expiracao configuravel |
 | **Validacao de permissoes** | Middleware que valida token e escopos do usuario em rotas protegidas |
@@ -113,48 +113,53 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 ## Estrutura do Projeto
 
 ```
-auth-service/
-├── app/
-│   ├── main.py                          # Ponto de entrada FastAPI
-│   ├── config.py                        # Settings via pydantic-settings (BaseSettings)
-│   ├── container.py                     # Composicao e injecao de dependencias
+/
+├── backend/
+│   ├── app/
+│   │   ├── main.py                          # Ponto de entrada FastAPI
+│   │   ├── config.py                        # Settings via pydantic-settings (BaseSettings)
+│   │   ├── container.py                     # Composicao e injecao de dependencias
+│   │   │
+│   │   ├── domain/                          # Camada de Dominio (sem deps externas)
+│   │   │   ├── user.py                      # Entidade User + value objects (Email, Username, HashedPassword)
+│   │   │   └── exceptions.py               # Excecoes de dominio
+│   │   │
+│   │   ├── ports/                           # Portas de saida (interfaces ABC)
+│   │   │   ├── user_repository.py           # Interface: UserRepository
+│   │   │   ├── token_provider.py            # Interface: TokenProvider
+│   │   │   └── password_hasher.py           # Interface: PasswordHasher
+│   │   │
+│   │   ├── application/                     # Camada de Aplicacao (Use Cases)
+│   │   │   ├── auth_service.py              # Logica de autenticacao e tokens
+│   │   │   └── user_service.py              # Logica de cadastro e consulta
+│   │   │
+│   │   └── adapters/                        # Adaptadores (infraestrutura)
+│   │       ├── api/                         # Driving Adapters (FastAPI)
+│   │       │   ├── auth_router.py           # Rotas OAuth2 + schemas de auth
+│   │       │   ├── user_router.py           # Rotas de usuarios + schemas
+│   │       │   └── dependencies.py          # OAuth2PasswordBearer, get_current_user
+│   │       ├── dynamo_user_repository.py    # UserRepository -> DynamoDB (boto3)
+│   │       ├── jwt_token_provider.py        # TokenProvider -> python-jose
+│   │       └── bcrypt_password_hasher.py    # PasswordHasher -> passlib/bcrypt
 │   │
-│   ├── domain/                          # Camada de Dominio (sem deps externas)
-│   │   ├── user.py                      # Entidade User + value objects (Email, HashedPassword)
-│   │   └── exceptions.py               # Excecoes de dominio
+│   ├── tests/
+│   │   ├── conftest.py                      # Fixtures globais e dubles reutilizaveis
+│   │   ├── test_auth_service.py             # Testes do use case de autenticacao
+│   │   ├── test_user_service.py             # Testes do use case de usuarios
+│   │   ├── test_domain.py                   # Testes de entidades e value objects
+│   │   ├── test_token_provider.py           # Testes de geracao/validacao JWT
+│   │   └── test_password_hasher.py          # Testes de hashing bcrypt
 │   │
-│   ├── ports/                           # Portas de saida (interfaces ABC)
-│   │   ├── user_repository.py           # Interface: UserRepository
-│   │   ├── token_provider.py            # Interface: TokenProvider
-│   │   └── password_hasher.py           # Interface: PasswordHasher
-│   │
-│   ├── application/                     # Camada de Aplicacao (Use Cases)
-│   │   ├── auth_service.py              # Logica de autenticacao e tokens
-│   │   └── user_service.py              # Logica de cadastro e consulta
-│   │
-│   └── adapters/                        # Adaptadores (infraestrutura)
-│       ├── api/                         # Driving Adapters (FastAPI)
-│       │   ├── auth_router.py           # Rotas OAuth2 + schemas de auth
-│       │   ├── user_router.py           # Rotas de usuarios + schemas
-│       │   └── dependencies.py          # OAuth2PasswordBearer, get_current_user
-│       ├── dynamo_user_repository.py    # UserRepository -> DynamoDB (boto3)
-│       ├── jwt_token_provider.py        # TokenProvider -> python-jose
-│       └── bcrypt_password_hasher.py    # PasswordHasher -> passlib/bcrypt
+│   ├── .env.example                         # Exemplo de variaveis de ambiente
+│   ├── pyproject.toml                       # Dependencias, mypy e Ruff
+│   ├── requirements.txt                     # Dependencias de producao
+│   └── requirements-dev.txt                 # Dependencias de desenvolvimento
 │
-├── tests/
-│   ├── conftest.py                      # Fixtures globais e dubles reutilizaveis
-│   ├── test_auth_service.py             # Testes do use case de autenticacao
-│   ├── test_user_service.py             # Testes do use case de usuarios
-│   ├── test_domain.py                   # Testes de entidades e value objects
-│   ├── test_token_provider.py           # Testes de geracao/validacao JWT
-│   └── test_password_hasher.py          # Testes de hashing bcrypt
-│
-├── .env.example                         # Exemplo de variaveis de ambiente
-├── pyproject.toml                       # Dependencias, mypy e Ruff
-├── requirements.txt                     # Dependencias de producao
-├── requirements-dev.txt                 # Dependencias de desenvolvimento
-├── CONTRIBUTING.md                      # Regras de contribuicao (GitFlow)
-├── TESTING.md                           # Estrategia de testes unitarios
+├── db/                                      # Modelagem do banco de dados
+├── .github/                                 # Workflows CI/CD
+├── BACKLOG.md                               # Backlog de User Stories
+├── CONTRIBUTING.md                          # Regras de contribuicao (GitFlow)
+├── TESTING.md                               # Estrategia de testes unitarios
 └── README.md
 ```
 
@@ -178,8 +183,9 @@ cd backend
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate   # Linux/macOS
-.venv\Scripts\activate      # Windows
+source .venv/bin/activate          # Linux / macOS
+source .venv/Scripts/activate      # Windows (Git Bash / MINGW64)
+.venv\Scripts\activate             # Windows (cmd / PowerShell)
 ```
 
 ### 3. Instale as dependencias
