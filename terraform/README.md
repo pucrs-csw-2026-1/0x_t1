@@ -2,30 +2,67 @@
 
 ## Tecnologia
 
-O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. A instância é rodada local em container via Docker Compose. Como o DynamoDB não apresenta regras, a validação dos dados e informações serão feitos pelo backend em **FastAPI**.
+O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. Para o ambiente de desenvolvimento, a stack AWS é emulada localmente com **[LocalStack](https://www.localstack.cloud/)**, executado via Docker Compose, e provisionada de forma declarativa com **[Terraform](https://www.terraform.io/)**. Como o DynamoDB não impõe regras de esquema, a validação dos dados é responsabilidade do backend em **FastAPI**.
+
+### Stack local
+
+| Componente | Função |
+| --- | --- |
+| **LocalStack** | Container que emula os serviços AWS (neste serviço, apenas DynamoDB) na porta `4566` |
+| **Terraform** | Provisiona a tabela `users` e seus índices secundários no LocalStack |
+| **AWS provider** | Aponta para o endpoint local (`http://localhost:4566`) com credenciais fictícias (`test`/`test`) |
 
 ## Configuração e Instalação
 
 ### Pré-requisitos
 
-- [DynamoDB Local](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html)
+- [Docker](https://docs.docker.com/get-docker/) e Docker Compose
+- [Terraform](https://developer.hashicorp.com/terraform/downloads) `>= 1.5`
 
 ### 1. Clone e entre no diretório
 
 ```bash
 git clone https://github.com/pucrs-csw-2026-1/0x_t1.git
-cd db
+cd 0x_t1/terraform
 ```
 
-### 2. Rode o arquivo Docker Compose
+### 2. Suba o container do LocalStack
 
-Na pasta `db/`, suba o container do DynamoDB Local:
+Na pasta `terraform/`, suba o emulador AWS local:
 
 ```bash
 docker compose up -d
 ```
 
-O serviço fica exposto em `http://localhost:8000`. Para parar, use `docker compose down`.
+O LocalStack fica exposto em `http://localhost:4566`. Para parar, use `docker compose down`.
+
+### 3. Provisione a tabela com Terraform
+
+Ainda na pasta `terraform/`, inicialize os providers e aplique a infraestrutura:
+
+```bash
+terraform init
+terraform apply
+```
+
+Isso cria a tabela `users` e seus índices secundários (`email-index`, `username-index`) dentro do LocalStack.
+
+### 4. (Opcional) Verifique a tabela
+
+Com a [AWS CLI](https://docs.aws.amazon.com/cli/) instalada, é possível inspecionar o estado do DynamoDB local:
+
+```bash
+aws --endpoint-url=http://localhost:4566 dynamodb list-tables
+```
+
+### Encerrando
+
+```bash
+terraform destroy   # remove os recursos provisionados
+docker compose down # encerra o container do LocalStack
+```
+
+> O volume `./.localstack` guarda o estado do container entre reinicializações. Apague-o se quiser começar do zero.
 
 ## Modelagem do Banco de Dados
 
@@ -35,7 +72,7 @@ A modelagem foi projetada na aplicação **Hackolade**. Ela foi projetada para s
 
 ### Por que DynamoDB?
 
-A escolha do DynamoDB como banco NoSQL se dá pela simplicidade do modelo chave-valor, que atende bem aos padrões de acesso do serviço de autenticação — predominantemente consultas diretas por `id`. Além disso, o DynamoDB Local permite rodar toda a stack em container, sem depender de serviços externos durante o desenvolvimento e testes.
+A escolha do DynamoDB como banco NoSQL se dá pela simplicidade do modelo chave-valor, que atende bem aos padrões de acesso do serviço de autenticação — predominantemente consultas diretas por `id`. Combinado com **LocalStack**, é possível rodar toda a stack AWS em container, sem depender de serviços externos durante o desenvolvimento e testes.
 
 ### Validação dos dados
 
