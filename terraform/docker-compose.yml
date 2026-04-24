@@ -1,0 +1,13 @@
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack-auth
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=dynamodb
+      - AWS_DEFAULT_REGION=us-east-1
+      - DEBUG=0
+    volumes:
+      - "./.localstack:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
