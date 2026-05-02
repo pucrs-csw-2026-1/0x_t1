@@ -31,7 +31,7 @@ class TestBcryptPasswordHasher:
         assert hasher.verify(WRONG_PASSWORD, hashed) is False
 
     # CT-03: salt aleatório — dois hashes da mesma senha são diferentes
-    def test_hash_valores_distintos_por_salt(self, hasher: BcryptPasswordHasher) -> None:
+    def test_hash_salt_aleatorio(self, hasher: BcryptPasswordHasher) -> None:
         assert hasher.hash(PASSWORD) != hasher.hash(PASSWORD)
 
     # CT-04: BcryptPasswordHasher instancia sem TypeError (implementa ABC corretamente)
