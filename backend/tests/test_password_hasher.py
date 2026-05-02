@@ -21,17 +21,17 @@ class TestBcryptPasswordHasher:
         assert hasher.hash(PASSWORD) != PASSWORD
 
     # CT-02 (partição — classe válida): verify retorna True para senha correta
-    def test_verify_retorna_true_para_senha_correta(self, hasher: BcryptPasswordHasher) -> None:
+    def test_verify_true_senha_correta(self, hasher: BcryptPasswordHasher) -> None:
         hashed = hasher.hash(PASSWORD)
         assert hasher.verify(PASSWORD, hashed) is True
 
     # CT-02 (partição — classe inválida): verify retorna False para senha incorreta
-    def test_verify_retorna_false_para_senha_incorreta(self, hasher: BcryptPasswordHasher) -> None:
+    def test_verify_false_senha_incorreta(self, hasher: BcryptPasswordHasher) -> None:
         hashed = hasher.hash(PASSWORD)
         assert hasher.verify(WRONG_PASSWORD, hashed) is False
 
     # CT-03: salt aleatório — dois hashes da mesma senha são diferentes
-    def test_hash_gera_valores_distintos_por_salt(self, hasher: BcryptPasswordHasher) -> None:
+    def test_hash_valores_distintos_por_salt(self, hasher: BcryptPasswordHasher) -> None:
         assert hasher.hash(PASSWORD) != hasher.hash(PASSWORD)
 
     # CT-04: BcryptPasswordHasher instancia sem TypeError (implementa ABC corretamente)
