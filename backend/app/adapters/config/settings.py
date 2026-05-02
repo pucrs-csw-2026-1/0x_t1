@@ -23,4 +23,4 @@ class Settings(BaseSettings):
     dynamodb_table_users: str = "user"
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]
