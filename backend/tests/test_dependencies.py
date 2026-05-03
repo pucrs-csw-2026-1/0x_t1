@@ -1,0 +1,109 @@
+"""Testes unitários para validação de escopos via require_scope (US-12)."""
+
+from unittest.mock import patch
+
+import pytest
+from fastapi import HTTPException
+from fastapi.security import SecurityScopes
+
+from app.adapters.api.dependencies import get_current_user
+from app.adapters.config.settings import Settings
+from app.adapters.jwt_token_provider import JwtTokenProvider
+
+SECRET = "chave-secreta-de-teste"
+ALGORITHM = "HS256"
+USER_ID = "usuario-123"
+
+
+@pytest.fixture
+def token_provider() -> JwtTokenProvider:
+    s = Settings(  # type: ignore[call-arg]
+        secret_key=SECRET,
+        algorithm=ALGORITHM,
+        access_token_expire_minutes=30,
+        refresh_token_expire_days=7,
+    )
+    return JwtTokenProvider(s)
+
+
+def _call(
+    token_provider: JwtTokenProvider,
+    token: str | None,
+    required_scopes: list[str],
+) -> str:
+    """Chama get_current_user injetando o token_provider de teste."""
+    with patch(
+        "app.adapters.api.dependencies.JwtTokenProvider",
+        return_value=token_provider,
+    ):
+        return get_current_user(
+            security_scopes=SecurityScopes(scopes=required_scopes),
+            token=token,
+        )
+
+
+class TestRequireScope:
+    # CT-01 (partição — autorizado): usuário com role admin acessa rota restrita a admin
+    def test_usuario_com_scope_admin_e_autorizado(
+        self, token_provider: JwtTokenProvider
+    ) -> None:
+        token = token_provider.generate_access_token(USER_ID, scopes=["admin"])
+
+        user_id = _call(token_provider, token, required_scopes=["admin"])
+
+        assert user_id == USER_ID
+
+    # CT-02 (partição — não autorizado): usuário com role user é rejeitado em rota admin
+    def test_usuario_com_scope_user_e_rejeitado_em_rota_admin(
+        self, token_provider: JwtTokenProvider
+    ) -> None:
+        token = token_provider.generate_access_token(USER_ID, scopes=["user"])
+
+        with pytest.raises(HTTPException) as exc_info:
+            _call(token_provider, token, required_scopes=["admin"])
+
+        assert exc_info.value.status_code == 403
+
+    # CT-03 (partição — sem roles): usuário sem scopes é rejeitado em rota restrita
+    def test_usuario_sem_scopes_e_rejeitado(
+        self, token_provider: JwtTokenProvider
+    ) -> None:
+        token = token_provider.generate_access_token(USER_ID, scopes=[])
+
+        with pytest.raises(HTTPException) as exc_info:
+            _call(token_provider, token, required_scopes=["admin"])
+
+        assert exc_info.value.status_code == 403
+
+    # CT-04: token contém campo scopes com as roles do usuário
+    def test_token_contem_claim_scopes(self, token_provider: JwtTokenProvider) -> None:
+        roles = ["admin", "user:read"]
+        token = token_provider.generate_access_token(USER_ID, scopes=roles)
+
+        payload = token_provider.decode_token(token)
+
+        assert payload["scopes"] == roles
+
+    # CT-05: token ausente retorna 401
+    def test_token_ausente_retorna_401(self, token_provider: JwtTokenProvider) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            _call(token_provider, token=None, required_scopes=["admin"])
+
+        assert exc_info.value.status_code == 401
+
+    # CT-06: token inválido retorna 401
+    def test_token_invalido_retorna_401(self, token_provider: JwtTokenProvider) -> None:
+        with pytest.raises(HTTPException) as exc_info:
+            _call(token_provider, token="token.invalido.assinado", required_scopes=[])
+
+        assert exc_info.value.status_code == 401
+
+    # CT-07: rota sem escopo requerido aceita qualquer token válido
+    def test_rota_sem_scope_aceita_token_valido(
+        self, token_provider: JwtTokenProvider
+    ) -> None:
+        token = token_provider.generate_access_token(USER_ID, scopes=["user"])
+
+        user_id = _call(token_provider, token, required_scopes=[])
+
+        assert user_id == USER_ID
