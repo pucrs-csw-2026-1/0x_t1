@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 
 from app.adapters.config.settings import settings
