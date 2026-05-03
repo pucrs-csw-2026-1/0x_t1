@@ -3,7 +3,6 @@ from fastapi.testclient import TestClient
 
 from app.adapters.api.auth_router import _get_auth_service, router
 from app.adapters.config.settings import Settings
-from app.adapters.in_memory_refresh_token_repository import InMemoryRefreshTokenRepository
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.auth_service import AuthService
 
