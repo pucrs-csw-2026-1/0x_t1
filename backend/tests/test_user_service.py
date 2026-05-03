@@ -47,7 +47,7 @@ class TestUserService:
         assert not hasattr(result, "password")
         assert repr(result.hashed_password) == "HashedPassword(***)"
 
-    # CT-03 (partição — inexistente): get_user_by_id com ID inexistente lança UserNotFoundError
+    # CT-03 (partição — inexistente): get_user_by_id lança UserNotFoundError
     def test_get_user_by_id_inexistente_lanca_excecao(
         self,
         service: UserService,
