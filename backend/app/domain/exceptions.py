@@ -74,3 +74,10 @@ class InsufficientScopeError(DomainError):
 
     def __init__(self, required: str) -> None:
         super().__init__(f"Permissão insuficiente: requer '{required}'.")
+
+
+class UserNotFoundError(DomainError):
+    """Exceção para usuário não encontrado."""
+
+    def __init__(self, user_id: str) -> None:
+        super().__init__(f"Usuário não encontrado: {user_id}")
