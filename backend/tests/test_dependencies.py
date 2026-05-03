@@ -76,9 +76,7 @@ class TestRequireScope:
         assert exc_info.value.status_code == 403
 
     # CT-04: token contém campo scopes com as roles do usuário
-    def test_token_contem_claim_scopes(
-        self, token_provider: JwtTokenProvider
-    ) -> None:
+    def test_token_contem_claim_scopes(self, token_provider: JwtTokenProvider) -> None:
         roles = ["admin", "user:read"]
         token = token_provider.generate_access_token(USER_ID, scopes=roles)
 
@@ -87,18 +85,14 @@ class TestRequireScope:
         assert payload["scopes"] == roles
 
     # CT-05: token ausente retorna 401
-    def test_token_ausente_retorna_401(
-        self, token_provider: JwtTokenProvider
-    ) -> None:
+    def test_token_ausente_retorna_401(self, token_provider: JwtTokenProvider) -> None:
         with pytest.raises(HTTPException) as exc_info:
             _call(token_provider, token=None, required_scopes=["admin"])
 
         assert exc_info.value.status_code == 401
 
     # CT-06: token inválido retorna 401
-    def test_token_invalido_retorna_401(
-        self, token_provider: JwtTokenProvider
-    ) -> None:
+    def test_token_invalido_retorna_401(self, token_provider: JwtTokenProvider) -> None:
         with pytest.raises(HTTPException) as exc_info:
             _call(token_provider, token="token.invalido.assinado", required_scopes=[])
 
