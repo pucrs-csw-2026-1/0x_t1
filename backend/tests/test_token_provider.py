@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 import pytest
 from jose import jwt
 
-from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.adapters.config.settings import Settings
+from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.domain.exceptions import InvalidTokenError, TokenExpiredError
 from app.ports.token_provider import TokenProvider
 
@@ -55,7 +55,7 @@ class TestJwtTokenProvider:
         assert payload["sub"] == USER_ID
         assert "exp" in payload
 
-    # CT-03 (partição — classe válida): decode_token com token válido retorna payload correto
+    # CT-03 (partição — válido): decode_token retorna payload correto
     def test_decode_token_valido_retorna_payload(
         self, provider: JwtTokenProvider
     ) -> None:
@@ -65,7 +65,7 @@ class TestJwtTokenProvider:
         assert payload["sub"] == USER_ID
         assert payload["scopes"] == SCOPES
 
-    # CT-04 (partição — expirado): decode_token com token expirado lança TokenExpiredError
+    # CT-04 (partição — expirado): decode_token lança TokenExpiredError
     def test_decode_token_expirado_lanca_excecao(
         self, provider: JwtTokenProvider
     ) -> None:
