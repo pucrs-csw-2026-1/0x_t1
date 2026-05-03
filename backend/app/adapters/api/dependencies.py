@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 from app.adapters.config.settings import settings
 from app.adapters.dynamo_user_repository import DynamoUserRepository
 from app.adapters.jwt_token_provider import JwtTokenProvider
+from app.application.auth_service import AuthService
 from app.application.user_service import UserService
 from app.domain.exceptions import InvalidTokenError, TokenExpiredError
 
@@ -73,3 +74,9 @@ def get_user_service() -> UserService:
     """Constrói e retorna uma instância de UserService."""
     repo = DynamoUserRepository(table_name=settings.dynamodb_table_users)
     return UserService(user_repo=repo)
+
+
+def get_auth_service() -> AuthService:
+    """Constrói e retorna uma instância de AuthService."""
+    token_provider = JwtTokenProvider(settings)
+    return AuthService(token_provider=token_provider)
