@@ -6,9 +6,15 @@ import pytest
 from fastapi import HTTPException
 from fastapi.security import SecurityScopes
 
-from app.adapters.api.dependencies import get_current_user
+from app.adapters.api.dependencies import (
+    get_auth_service,
+    get_current_user,
+    get_user_service,
+)
 from app.adapters.config.settings import Settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
+from app.application.auth_service import AuthService
+from app.application.user_service import UserService
 
 SECRET = "chave-secreta-de-teste"
 ALGORITHM = "HS256"
@@ -107,3 +113,23 @@ class TestRequireScope:
         user_id = _call(token_provider, token, required_scopes=[])
 
         assert user_id == USER_ID
+
+
+class TestGetUserService:
+    """Testes para get_user_service()."""
+
+    def test_get_user_service_retorna_instancia(self) -> None:
+        """CT-08: get_user_service retorna uma instância de UserService."""
+        service = get_user_service()
+
+        assert isinstance(service, UserService)
+
+
+class TestGetAuthService:
+    """Testes para get_auth_service()."""
+
+    def test_get_auth_service_retorna_instancia(self) -> None:
+        """CT-09: get_auth_service retorna uma instância de AuthService."""
+        service = get_auth_service()
+
+        assert isinstance(service, AuthService)
