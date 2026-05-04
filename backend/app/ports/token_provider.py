@@ -1,15 +1,26 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 
 class TokenProvider(ABC):
-    """Port para emissao de tokens de autenticacao."""
+    """Port para geração e decodificação de tokens de autenticação."""
 
     @abstractmethod
     def generate_access_token(self, user_id: str, scopes: list[str]) -> str:
-        """Gera um access token contendo o identificador e os escopos do usuario."""
+        """Gera um access token para o usuário com os escopos fornecidos."""
         ...
 
     @abstractmethod
     def generate_refresh_token(self, user_id: str) -> str:
-        """Gera um refresh token para o usuario."""
+        """Gera um refresh token para o usuário."""
+        ...
+
+    @abstractmethod
+    def decode_token(self, token: str) -> dict[str, Any]:
+        """Decodifica e valida o token, retornando seu payload.
+
+        Raises:
+            InvalidTokenError: se o token for inválido ou malformado.
+            TokenExpiredError: se o token estiver expirado.
+        """
         ...

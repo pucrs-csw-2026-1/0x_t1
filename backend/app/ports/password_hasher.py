@@ -2,9 +2,14 @@ from abc import ABC, abstractmethod
 
 
 class PasswordHasher(ABC):
-    """Port para hashing e verificacao de senha."""
+    """Port para hashing e verificacao de senhas."""
+
+    @abstractmethod
+    def hash(self, password: str) -> str:
+        """Gera o hash da senha em texto plano e retorna a string resultante."""
+        ...
 
     @abstractmethod
     def verify(self, password: str, hashed: str) -> bool:
-        """Valida se a senha em texto plano corresponde ao hash armazenado."""
+        """Verifica se a senha em texto plano corresponde ao hash fornecido."""
         ...

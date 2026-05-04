@@ -139,3 +139,27 @@ def test_post_auth_login_aceita_form_urlencoded() -> None:
         email="maria@example.com",
         password="Senha@123",
     )
+
+
+def test_post_auth_login_retorna_401_quando_credenciais_sao_invalidas() -> None:
+    app = FastAPI()
+    auth_service_mock = create_autospec(AuthService, instance=True)
+    auth_service_mock.login.side_effect = InvalidCredentialsError()
+
+    app.include_router(router)
+    app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
+
+    client = TestClient(app)
+    response = client.post(
+        "/auth/login",
+        data={"username": "maria@example.com", "password": "SenhaErrada@1"},
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Credenciais inválidas."}
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+def test_get_auth_service_levanta_not_implemented_error() -> None:
+    with pytest.raises(NotImplementedError):
+        get_auth_service()
