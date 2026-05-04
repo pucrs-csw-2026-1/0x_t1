@@ -3,6 +3,7 @@ from collections.abc import Callable
 from fastapi import HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 
+from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.adapters.config.settings import settings
 from app.adapters.dynamo_user_repository import DynamoUserRepository
 from app.adapters.jwt_token_provider import JwtTokenProvider
@@ -78,7 +79,6 @@ def get_user_service() -> UserService:
 
 def get_auth_service() -> AuthService:
     """Constrói e retorna uma instância de AuthService."""
-    from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
     from app.adapters.in_memory_refresh_token_repository import (
         InMemoryRefreshTokenRepository,
     )

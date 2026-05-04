@@ -127,6 +127,7 @@ class TestAuthRouterRefresh:
         app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
 
         refresh_token = token_provider.generate_refresh_token(USER_ID)
+
         response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
 
         app.dependency_overrides.clear()
@@ -196,6 +197,7 @@ class TestAuthRouterRefresh:
         app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
 
         refresh_token = "token.falso.assinatura_invalida"
+
         response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
 
         app.dependency_overrides.clear()
@@ -208,34 +210,21 @@ class TestAuthRouterRefresh:
 class TestAuthRouterLogout:
     """Testes do endpoint POST /auth/logout."""
 
-    def test_logout_sem_bearer_token_retorna_401(
-        self,
-        app: FastAPI,
-        client: TestClient,
-    ) -> None:
-        """CT-07: Logout sem Bearer token retorna 401."""
-        response = client.post(
-            "/auth/logout", json={"refresh_token": "refresh-token"}
-        )
-
-        assert response.status_code == 401
-
-    def test_logout_com_bearer_token_retorna_204(
+    def test_logout_com_usuario_autenticado_retorna_204(
         self,
         app: FastAPI,
         client: TestClient,
         token_provider: JwtTokenProvider,
     ) -> None:
-        """CT-08: Logout com Bearer token retorna 204 e chama serviço."""
+        """CT-07: Logout com usuário autenticado retorna 204."""
         auth_service_mock = create_autospec(AuthService, instance=True)
         app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
         app.dependency_overrides[get_current_user] = lambda: USER_ID
 
-        refresh_token = "refresh-token-ativo"
+        refresh_token = token_provider.generate_refresh_token(USER_ID)
 
         response = client.post(
             "/auth/logout",
-            headers={"Authorization": "Bearer token-valido"},
             json={"refresh_token": refresh_token},
         )
 
@@ -244,3 +233,23 @@ class TestAuthRouterLogout:
         assert response.status_code == 204
         auth_service_mock.logout.assert_called_once_with(refresh_token)
 
+    def test_logout_sem_bearer_token_retorna_401(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        """CT-08: Logout sem token de autenticação retorna 401."""
+        auth_service_mock = create_autospec(AuthService, instance=True)
+        app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
+
+        refresh_token = token_provider.generate_refresh_token(USER_ID)
+
+        response = client.post(
+            "/auth/logout",
+            json={"refresh_token": refresh_token},
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 401

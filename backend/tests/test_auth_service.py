@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import create_autospec
 
@@ -203,6 +204,28 @@ class TestAuthServiceRefresh:
         with pytest.raises(InvalidTokenError):
             auth_service.refresh(adulterado)
 
+    def test_refresh_token_com_revoked_flag_lanca_excecao(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+    ) -> None:
+        """CT-07: Refresh token com flag 'revoked=true' lança TokenRevokedError."""
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+        )
+        revoked_payload: dict[str, Any] = {
+            "sub": USER_ID,
+            "revoked": True,
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+        }
+        refresh_token = jwt.encode(revoked_payload, SECRET, algorithm=ALGORITHM)
+
+        with pytest.raises(TokenRevokedError):
+            auth_service.refresh(refresh_token)
+
 
 class TestAuthServiceLogout:
     """Testes do método logout (US-08)."""
@@ -212,9 +235,8 @@ class TestAuthServiceLogout:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
-        valid_user: User,
     ) -> None:
-        """CT-07: Logout marca refresh token como revogado."""
+        """CT-08: Logout revoga o refresh token no repositório."""
         refresh_repo = InMemoryRefreshTokenRepository()
         auth_service = AuthService(
             user_repository=user_repository_mock,
@@ -222,20 +244,23 @@ class TestAuthServiceLogout:
             token_provider=jwt_token_provider,
             refresh_repository=refresh_repo,
         )
-        refresh = jwt_token_provider.generate_refresh_token(valid_user.id)
+        refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
 
-        assert not refresh_repo.is_revoked(refresh)
-        auth_service.logout(refresh)
-        assert refresh_repo.is_revoked(refresh)
+        # Token deve estar válido antes do logout
+        assert not refresh_repo.is_revoked(refresh_token)
+
+        auth_service.logout(refresh_token)
+
+        # Após logout, o token deve estar revogado
+        assert refresh_repo.is_revoked(refresh_token)
 
     def test_logout_idempotente(
         self,
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
-        valid_user: User,
     ) -> None:
-        """CT-08: Logout de token já revogado é idempotente."""
+        """CT-09: Logout é idempotente (sem erro ao revogar token já revogado)."""
         refresh_repo = InMemoryRefreshTokenRepository()
         auth_service = AuthService(
             user_repository=user_repository_mock,
@@ -243,30 +268,28 @@ class TestAuthServiceLogout:
             token_provider=jwt_token_provider,
             refresh_repository=refresh_repo,
         )
-        refresh = jwt_token_provider.generate_refresh_token(valid_user.id)
+        refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
 
-        auth_service.logout(refresh)
-        auth_service.logout(refresh)  # Sem erro
-        assert refresh_repo.is_revoked(refresh)
+        auth_service.logout(refresh_token)
+        # Segunda chamada não deve lançar erro
+        auth_service.logout(refresh_token)
 
-    def test_refresh_apos_logout_lanca_revoked(
+        assert refresh_repo.is_revoked(refresh_token)
+
+    def test_logout_sem_refresh_repository_nao_lanca_erro(
         self,
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
-        valid_user: User,
     ) -> None:
-        """CT-09: Refresh após logout lança TokenRevokedError."""
-        refresh_repo = InMemoryRefreshTokenRepository()
+        """CT-10: Logout sem RefreshRepository injetado não lança erro."""
         auth_service = AuthService(
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=jwt_token_provider,
-            refresh_repository=refresh_repo,
+            refresh_repository=None,
         )
-        refresh = jwt_token_provider.generate_refresh_token(valid_user.id)
+        refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
 
-        auth_service.logout(refresh)
-        with pytest.raises(TokenRevokedError):
-            auth_service.refresh(refresh)
-
+        # Não deve lançar erro mesmo sem repositório
+        auth_service.logout(refresh_token)

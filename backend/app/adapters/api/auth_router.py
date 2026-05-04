@@ -62,7 +62,7 @@ def login(
 @router.post("/refresh", response_model=RefreshTokenResponse, status_code=200)
 def refresh(
     request: RefreshRequest,
-    auth_service: AuthService = Depends(get_auth_service),
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> RefreshTokenResponse:
     """Renova o access token usando um refresh token válido."""
     try:

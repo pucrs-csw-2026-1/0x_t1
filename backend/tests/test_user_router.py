@@ -53,7 +53,9 @@ class TestUserRouter:
         assert data["last_name"] == valid_user.last_name
         assert data["username"] == valid_user.username.value
         assert data["email"] == valid_user.email.value
+        assert data["access_level"] == valid_user.access_level
         assert data["is_active"] is valid_user.is_active
+        assert "created_at" in data
         user_service_mock.get_user_by_id.assert_called_once_with(valid_user.id)
 
     def test_get_me_sem_bearer_token_retorna_401(
@@ -64,4 +66,3 @@ class TestUserRouter:
         response = client.get("/users/me")
 
         assert response.status_code == 401
-

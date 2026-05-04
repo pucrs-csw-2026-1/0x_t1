@@ -49,6 +49,7 @@ class AuthService:
         }
 
     def refresh(self, refresh_token: str) -> str:
+
         """Renova o access token a partir de um refresh token válido.
 
         Verifica revogação antes de decodificar.
@@ -64,6 +65,11 @@ class AuthService:
             raise TokenRevokedError()
 
         payload = self._token_provider.decode_token(refresh_token)
+
+        # Fallback: verifica também o campo "revoked" no payload
+        if payload.get("revoked") is True:
+            raise TokenRevokedError()
+
         user_id = payload["sub"]
         scopes = payload.get("scopes", [])
         return self._token_provider.generate_access_token(
