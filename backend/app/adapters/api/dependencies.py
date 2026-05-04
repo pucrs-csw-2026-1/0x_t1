@@ -9,6 +9,7 @@ from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.auth_service import AuthService
 from app.application.user_service import UserService
 from app.domain.exceptions import InvalidTokenError, TokenExpiredError
+from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
@@ -78,5 +79,7 @@ def get_user_service() -> UserService:
 
 def get_auth_service() -> AuthService:
     """Constrói e retorna uma instância de AuthService."""
+    repo = DynamoUserRepository(table_name=settings.dynamodb_table_users)
+    hasher = BcryptPasswordHasher()
     token_provider = JwtTokenProvider(settings)
-    return AuthService(token_provider=token_provider)
+    return AuthService(user_repository=repo, password_hasher=hasher, token_provider=token_provider)
