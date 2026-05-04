@@ -31,7 +31,11 @@ def login(
             email=form_data.username,
             password=form_data.password,
         )
-        return TokenResponse(**token_data)
+        return TokenResponse(
+            access_token=token_data["access_token"],
+            refresh_token=token_data["refresh_token"],
+            token_type="bearer",
+        )
     except InvalidCredentialsError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
