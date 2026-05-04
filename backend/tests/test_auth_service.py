@@ -92,9 +92,7 @@ class TestAuthServiceLogin:
         token_provider_mock.generate_access_token.return_value = "access.jwt"
         token_provider_mock.generate_refresh_token.return_value = "refresh.jwt"
 
-        result = auth_service.login(
-            email=valid_user.email.value, password="Senha@123"
-        )
+        result = auth_service.login(email=valid_user.email.value, password="Senha@123")
 
         assert result == {
             "access_token": "access.jwt",
@@ -133,9 +131,7 @@ class TestAuthServiceLogin:
         password_hasher_mock.verify.return_value = False
 
         with pytest.raises(InvalidCredentialsError):
-            auth_service.login(
-                email=valid_user.email.value, password="SenhaErrada@1"
-            )
+            auth_service.login(email=valid_user.email.value, password="SenhaErrada@1")
 
         token_provider_mock.generate_access_token.assert_not_called()
 

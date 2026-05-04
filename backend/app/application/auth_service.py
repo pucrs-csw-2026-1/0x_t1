@@ -49,7 +49,6 @@ class AuthService:
         }
 
     def refresh(self, refresh_token: str) -> str:
-
         """Renova o access token a partir de um refresh token válido.
 
         Verifica revogação antes de decodificar.
@@ -58,9 +57,8 @@ class AuthService:
             TokenRevokedError: se o refresh token foi revogado.
         """
         # Verifica revogação primeiro (se repositório foi injetado)
-        if (
-            self._refresh_repository is not None
-            and self._refresh_repository.is_revoked(refresh_token)
+        if self._refresh_repository is not None and self._refresh_repository.is_revoked(
+            refresh_token
         ):
             raise TokenRevokedError()
 
