@@ -79,11 +79,18 @@ def get_user_service() -> UserService:
 
 def get_auth_service() -> AuthService:
     """Constrói e retorna uma instância de AuthService."""
-    repo = DynamoUserRepository(table_name=settings.dynamodb_table_users)
-    hasher = BcryptPasswordHasher()
+    from app.adapters.in_memory_refresh_token_repository import (
+        InMemoryRefreshTokenRepository,
+    )
+
+    user_repository = DynamoUserRepository(table_name=settings.dynamodb_table_users)
+    password_hasher = BcryptPasswordHasher()
     token_provider = JwtTokenProvider(settings)
+    refresh_repository = InMemoryRefreshTokenRepository()
+
     return AuthService(
-        user_repository=repo,
-        password_hasher=hasher,
+        user_repository=user_repository,
+        password_hasher=password_hasher,
         token_provider=token_provider,
+        refresh_repository=refresh_repository,
     )
