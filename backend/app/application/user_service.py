@@ -17,7 +17,11 @@ from app.ports.user_repository import UserRepository
 
 
 class UserService:
-    def __init__(self, user_repo: UserRepository, password_hasher: PasswordHasher | None = None) -> None:
+    def __init__(
+        self,
+        user_repo: UserRepository,
+        password_hasher: PasswordHasher | None = None,
+    ) -> None:
         self._user_repo = user_repo
         self._hasher: PasswordHasher = password_hasher or BcryptPasswordHasher()
 
@@ -45,7 +49,8 @@ class UserService:
 
         Raises:
             EmailAlreadyExistsError: se já existir usuário com o mesmo e-mail.
-            InvalidEmailError, WeakPasswordError, InvalidUsernameError: propagadas do domínio.
+            InvalidEmailError, WeakPasswordError, InvalidUsernameError:
+                propagadas do domínio.
         """
         # Cria value objects (validam email/username)
         email_vo = Email(email)

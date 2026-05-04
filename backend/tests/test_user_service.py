@@ -1,20 +1,19 @@
 """Testes unitários para UserService (US-10)."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from app.application.user_service import UserService
-from app.domain.exceptions import UserNotFoundError
-from app.domain.user import User
-from tests.fakes.user_repository import FakeUserRepository
-from unittest.mock import MagicMock
-
-from app.ports.password_hasher import PasswordHasher
-from app.domain.user import Email
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
     InvalidEmailError,
+    UserNotFoundError,
     WeakPasswordError,
 )
+from app.domain.user import Email, User
+from app.ports.password_hasher import PasswordHasher
+from tests.fakes.user_repository import FakeUserRepository
 
 
 class TestUserService:
@@ -79,7 +78,9 @@ class TestUserService:
 
 class TestUserServiceRegister:
     # Spy + Fake: verifica que PasswordHasher.hash é chamado exatamente 1 vez
-    def test_register_calls_hasher_once_and_persists(self, fake_repo: FakeUserRepository) -> None:
+    def test_register_calls_hasher_once_and_persists(
+        self, fake_repo: FakeUserRepository
+    ) -> None:
         spy: PasswordHasher = MagicMock(spec=PasswordHasher)
         spy.hash.return_value = "$2b$12$fakehash"
 
@@ -124,7 +125,9 @@ class TestUserServiceRegister:
         )
 
         stub = StubRepo(existing)
-        service = UserService(user_repo=stub, password_hasher=MagicMock(spec=PasswordHasher))
+        service = UserService(
+            user_repo=stub, password_hasher=MagicMock(spec=PasswordHasher)
+        )
 
         with pytest.raises(EmailAlreadyExistsError):
             service.register(
@@ -136,8 +139,12 @@ class TestUserServiceRegister:
             )
 
     # Validação de e-mail inválido
-    def test_register_invalid_email_raises(self, fake_repo: FakeUserRepository) -> None:
-        service = UserService(user_repo=fake_repo, password_hasher=MagicMock(spec=PasswordHasher))
+    def test_register_invalid_email_raises(
+        self, fake_repo: FakeUserRepository
+    ) -> None:
+        service = UserService(
+            user_repo=fake_repo, password_hasher=MagicMock(spec=PasswordHasher)
+        )
 
         with pytest.raises(InvalidEmailError):
             service.register(
@@ -149,8 +156,12 @@ class TestUserServiceRegister:
             )
 
     # Senha fraca deve lançar WeakPasswordError
-    def test_register_weak_password_raises(self, fake_repo: FakeUserRepository) -> None:
-        service = UserService(user_repo=fake_repo, password_hasher=MagicMock(spec=PasswordHasher))
+    def test_register_weak_password_raises(
+        self, fake_repo: FakeUserRepository
+    ) -> None:
+        service = UserService(
+            user_repo=fake_repo, password_hasher=MagicMock(spec=PasswordHasher)
+        )
 
         with pytest.raises(WeakPasswordError):
             service.register(
@@ -170,7 +181,7 @@ class TestUserServiceRegister:
         # inicialmente não existe
         assert fake_repo.find_by_email(Email("tst@example.com")) is None
 
-        user = service.register(
+        service.register(
             first_name="Tst",
             last_name="User",
             username="tst.user",
