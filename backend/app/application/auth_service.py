@@ -47,4 +47,7 @@ class AuthService:
 
         user_id = payload["sub"]
         scopes = payload.get("scopes", [])
-        return self._token_provider.generate_access_token(user_id=user_id, scopes=scopes)
+        return self._token_provider.generate_access_token(
+            user_id=user_id,
+            scopes=scopes,
+        )

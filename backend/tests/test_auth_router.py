@@ -12,7 +12,11 @@ from jose import jwt
 from app.adapters.api.auth_router import router
 from app.adapters.config.settings import Settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
-from app.domain.exceptions import InvalidTokenError, TokenExpiredError, TokenRevokedError
+from app.domain.exceptions import (
+    InvalidTokenError,
+    TokenExpiredError,
+    TokenRevokedError,
+)
 
 SECRET = "chave-secreta-de-teste"
 ALGORITHM = "HS256"
@@ -48,7 +52,7 @@ def token_provider(settings: Settings) -> JwtTokenProvider:
 
 
 class TestAuthRouter:
-    # CT-01 (transição de estado): POST /auth/refresh com token válido retorna 200 + access_token
+    # CT-01: POST /auth/refresh com token válido retorna 200
     def test_refresh_token_valido_retorna_200_com_access_token(
         self,
         app: FastAPI,
@@ -76,7 +80,7 @@ class TestAuthRouter:
         data = response.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
-        
+
         # Valida que o token retornado é um access token válido
         payload = token_provider.decode_token(data["access_token"])
         assert payload["sub"] == USER_ID

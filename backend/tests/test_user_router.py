@@ -14,7 +14,10 @@ from app.domain.user import User
 
 
 class TestUserRouter:
-    def test_get_me_retorna_dados_do_usuario_autenticado(self, valid_user: User) -> None:
+    def test_get_me_retorna_dados_do_usuario_autenticado(
+        self,
+        valid_user: User,
+    ) -> None:
         app = FastAPI()
         app.include_router(router)
 
