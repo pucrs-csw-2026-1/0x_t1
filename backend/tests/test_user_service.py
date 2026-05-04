@@ -11,7 +11,7 @@ from app.domain.exceptions import (
     UserNotFoundError,
     WeakPasswordError,
 )
-from app.domain.user import Email, User
+from app.domain.user import Email, HashedPassword, User, Username
 from app.ports.password_hasher import PasswordHasher
 from tests.fakes.user_repository import FakeUserRepository
 
@@ -114,8 +114,6 @@ class TestUserServiceRegister:
                 return self._existing
 
         # cria um usuário existente (constrói com valores válidos)
-        from app.domain.user import HashedPassword, Username
-
         existing = User(
             username=Username("exist.user"),
             email=Email("exist@example.com"),
@@ -139,9 +137,7 @@ class TestUserServiceRegister:
             )
 
     # Validação de e-mail inválido
-    def test_register_invalid_email_raises(
-        self, fake_repo: FakeUserRepository
-    ) -> None:
+    def test_register_invalid_email_raises(self, fake_repo: FakeUserRepository) -> None:
         service = UserService(
             user_repo=fake_repo, password_hasher=MagicMock(spec=PasswordHasher)
         )
@@ -156,9 +152,7 @@ class TestUserServiceRegister:
             )
 
     # Senha fraca deve lançar WeakPasswordError
-    def test_register_weak_password_raises(
-        self, fake_repo: FakeUserRepository
-    ) -> None:
+    def test_register_weak_password_raises(self, fake_repo: FakeUserRepository) -> None:
         service = UserService(
             user_repo=fake_repo, password_hasher=MagicMock(spec=PasswordHasher)
         )
