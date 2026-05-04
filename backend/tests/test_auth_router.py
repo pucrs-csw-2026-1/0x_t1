@@ -70,9 +70,7 @@ class TestAuthRouter:
 
         app.dependency_overrides[get_auth_service] = lambda: mock_service
 
-        response = client.post(
-            "/auth/refresh", json={"refresh_token": refresh_token}
-        )
+        response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
 
         app.dependency_overrides.clear()
 
@@ -104,9 +102,7 @@ class TestAuthRouter:
         }
         refresh_token = jwt.encode(expired_payload, SECRET, algorithm=ALGORITHM)
 
-        response = client.post(
-            "/auth/refresh", json={"refresh_token": refresh_token}
-        )
+        response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
 
         app.dependency_overrides.clear()
 
@@ -135,9 +131,7 @@ class TestAuthRouter:
         }
         refresh_token = jwt.encode(revoked_payload, SECRET, algorithm=ALGORITHM)
 
-        response = client.post(
-            "/auth/refresh", json={"refresh_token": refresh_token}
-        )
+        response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
 
         app.dependency_overrides.clear()
 
@@ -161,9 +155,7 @@ class TestAuthRouter:
 
         adulterado = "token.falso.assinatura_invalida"
 
-        response = client.post(
-            "/auth/refresh", json={"refresh_token": adulterado}
-        )
+        response = client.post("/auth/refresh", json={"refresh_token": adulterado})
 
         app.dependency_overrides.clear()
 
@@ -190,9 +182,7 @@ class TestAuthRouter:
         }
         refresh_token = jwt.encode(payload_sem_sub, SECRET, algorithm=ALGORITHM)
 
-        response = client.post(
-            "/auth/refresh", json={"refresh_token": refresh_token}
-        )
+        response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
 
         app.dependency_overrides.clear()
 
