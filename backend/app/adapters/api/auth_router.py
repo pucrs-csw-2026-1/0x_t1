@@ -1,11 +1,17 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 
+from app.adapters.api.dependencies import get_auth_service
 from app.application.auth_service import AuthService
-from app.domain.exceptions import InvalidCredentialsError
+from app.domain.exceptions import (
+    InvalidCredentialsError,
+    InvalidTokenError,
+    TokenExpiredError,
+    TokenRevokedError,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -16,9 +22,13 @@ class TokenResponse(BaseModel):
     token_type: Literal["bearer"] = "bearer"
 
 
-def get_auth_service() -> AuthService:
-    """Dependency para resolver o AuthService na camada de API."""
-    raise NotImplementedError("AuthService dependency not configured")
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class RefreshTokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -42,3 +52,33 @@ def login(
             detail="Credenciais inválidas.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+
+
+@router.post("/refresh", response_model=RefreshTokenResponse, status_code=200)
+def refresh(
+    request: RefreshRequest,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> RefreshTokenResponse:
+    """Renova o access token usando um refresh token valido."""
+    try:
+        access_token = auth_service.refresh(request.refresh_token)
+    except TokenExpiredError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token expirado.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except TokenRevokedError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token revogado.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token inválido.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return RefreshTokenResponse(access_token=access_token)

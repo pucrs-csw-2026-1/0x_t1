@@ -1,4 +1,4 @@
-from app.domain.exceptions import InvalidCredentialsError
+from app.domain.exceptions import InvalidCredentialsError, TokenRevokedError
 from app.domain.user import Email
 from app.ports.password_hasher import PasswordHasher
 from app.ports.token_provider import TokenProvider
@@ -37,3 +37,17 @@ class AuthService:
             "refresh_token": refresh_token,
             "token_type": "bearer",
         }
+
+    def refresh(self, refresh_token: str) -> str:
+        """Renova sessao a partir de um refresh token valido."""
+        payload = self._token_provider.decode_token(refresh_token)
+
+        if payload.get("revoked") is True:
+            raise TokenRevokedError()
+
+        user_id = payload["sub"]
+        scopes = payload.get("scopes", [])
+        return self._token_provider.generate_access_token(
+            user_id=user_id,
+            scopes=scopes,
+        )

@@ -3,9 +3,11 @@ from collections.abc import Callable
 from fastapi import HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 
+from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.adapters.config.settings import settings
 from app.adapters.dynamo_user_repository import DynamoUserRepository
 from app.adapters.jwt_token_provider import JwtTokenProvider
+from app.application.auth_service import AuthService
 from app.application.user_service import UserService
 from app.domain.exceptions import InvalidTokenError, TokenExpiredError
 
@@ -73,3 +75,15 @@ def get_user_service() -> UserService:
     """Constrói e retorna uma instância de UserService."""
     repo = DynamoUserRepository(table_name=settings.dynamodb_table_users)
     return UserService(user_repo=repo)
+
+
+def get_auth_service() -> AuthService:
+    """Constrói e retorna uma instância de AuthService."""
+    repo = DynamoUserRepository(table_name=settings.dynamodb_table_users)
+    hasher = BcryptPasswordHasher()
+    token_provider = JwtTokenProvider(settings)
+    return AuthService(
+        user_repository=repo,
+        password_hasher=hasher,
+        token_provider=token_provider,
+    )

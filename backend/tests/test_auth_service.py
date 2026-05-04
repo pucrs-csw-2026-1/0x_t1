@@ -1,18 +1,36 @@
+"""Testes unitarios para AuthService (US-07: renovacao automatica da sessao)."""
+
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import create_autospec
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from jose import jwt
 
-from app.adapters.api.auth_router import get_auth_service, router
+from app.adapters.api.auth_router import router
+from app.adapters.api.dependencies import get_auth_service
+from app.adapters.config.settings import Settings
+from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.auth_service import AuthService
-from app.domain.exceptions import InvalidCredentialsError
+from app.domain.exceptions import (
+    InvalidCredentialsError,
+    InvalidTokenError,
+    TokenExpiredError,
+    TokenRevokedError,
+)
 from app.domain.user import Email, User
 from app.ports.password_hasher import PasswordHasher
 from app.ports.token_provider import TokenProvider
 from app.ports.user_repository import UserRepository
+
+SECRET = "chave-secreta-de-teste"
+ALGORITHM = "HS256"
+USER_ID = "usuario-123"
+SCOPES = ["user:read", "user:write"]
 
 
 @pytest.fixture
@@ -160,6 +178,88 @@ def test_post_auth_login_retorna_401_quando_credenciais_sao_invalidas() -> None:
     assert response.headers["www-authenticate"] == "Bearer"
 
 
-def test_get_auth_service_levanta_not_implemented_error() -> None:
-    with pytest.raises(NotImplementedError):
-        get_auth_service()
+@pytest.fixture
+def settings() -> Settings:
+    return Settings(  # type: ignore[call-arg]
+        secret_key=SECRET,
+        algorithm=ALGORITHM,
+        access_token_expire_minutes=30,
+        refresh_token_expire_days=7,
+    )
+
+
+@pytest.fixture
+def jwt_token_provider(settings: Settings) -> JwtTokenProvider:
+    return JwtTokenProvider(settings)
+
+
+@pytest.fixture
+def refresh_service(
+    jwt_token_provider: JwtTokenProvider,
+    user_repository_mock: UserRepository,
+    password_hasher_mock: PasswordHasher,
+) -> AuthService:
+    return AuthService(
+        user_repository=user_repository_mock,
+        password_hasher=password_hasher_mock,
+        token_provider=jwt_token_provider,
+    )
+
+
+def test_refresh_token_valido_retorna_novo_access_token(
+    refresh_service: AuthService,
+    jwt_token_provider: JwtTokenProvider,
+) -> None:
+    refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
+
+    access_token = refresh_service.refresh(refresh_token)
+
+    payload = jwt_token_provider.decode_token(access_token)
+    assert payload["sub"] == USER_ID
+    assert payload["scopes"] == []
+
+
+def test_refresh_token_expirado_lanca_excecao(refresh_service: AuthService) -> None:
+    expired_payload: dict[str, Any] = {
+        "sub": USER_ID,
+        "exp": datetime.now(timezone.utc) - timedelta(hours=1),
+    }
+    refresh_token = jwt.encode(expired_payload, SECRET, algorithm=ALGORITHM)
+
+    with pytest.raises(TokenExpiredError):
+        refresh_service.refresh(refresh_token)
+
+
+def test_refresh_token_revogado_lanca_excecao(refresh_service: AuthService) -> None:
+    revoked_payload: dict[str, Any] = {
+        "sub": USER_ID,
+        "scopes": SCOPES,
+        "revoked": True,
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+    }
+    refresh_token = jwt.encode(revoked_payload, SECRET, algorithm=ALGORITHM)
+
+    with pytest.raises(TokenRevokedError):
+        refresh_service.refresh(refresh_token)
+
+
+def test_refresh_token_assinatura_adulterada_lanca_excecao(
+    refresh_service: AuthService,
+    jwt_token_provider: JwtTokenProvider,
+) -> None:
+    refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
+    parts = refresh_token.split(".")
+    adulterado = parts[0] + "." + parts[1] + ".assinatura_invalida"
+
+    with pytest.raises(InvalidTokenError):
+        refresh_service.refresh(adulterado)
+
+
+def test_refresh_token_sem_sub_lanca_excecao(refresh_service: AuthService) -> None:
+    payload_sem_sub: dict[str, Any] = {
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+    }
+    refresh_token = jwt.encode(payload_sem_sub, SECRET, algorithm=ALGORITHM)
+
+    with pytest.raises(InvalidTokenError):
+        refresh_service.refresh(refresh_token)
