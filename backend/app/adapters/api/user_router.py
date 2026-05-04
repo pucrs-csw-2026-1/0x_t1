@@ -22,6 +22,15 @@ class UserResponse(BaseModel):
     created_at: datetime
 
 
+class UserCreate(BaseModel):
+    first_name: str
+    last_name: str
+    username: str
+    email: str
+    password: str
+    access_level: list[str] | None = None
+
+
 def _to_response(user: User) -> UserResponse:
     return UserResponse(
         id=user.id,
@@ -42,4 +51,20 @@ def get_me(
 ) -> UserResponse:
     """Retorna os dados do usuário autenticado."""
     user = user_service.get_user_by_id(user_id)
+    return _to_response(user)
+
+
+@router.post("/register", response_model=UserResponse, status_code=201)
+def register_user(
+    payload: UserCreate, user_service: Annotated[UserService, Depends(get_user_service)]
+) -> UserResponse:
+    """Cria uma nova conta de usuário."""
+    user = user_service.register(
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        username=payload.username,
+        email=payload.email,
+        password=payload.password,
+        access_level=payload.access_level,
+    )
     return _to_response(user)
