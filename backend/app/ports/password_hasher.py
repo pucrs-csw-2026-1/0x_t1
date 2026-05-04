@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 
 class PasswordHasher(ABC):
-    """Port para hashing e verificacao de senhas."""
+    """Port para hashing e verificação de senhas."""
 
     @abstractmethod
     def hash(self, password: str) -> str:
