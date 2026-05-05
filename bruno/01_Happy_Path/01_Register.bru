@@ -1,0 +1,44 @@
+meta {
+  name: 01 Register
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "{{first_name}}",
+    "last_name": "{{last_name}}",
+    "username": "{{username}}",
+    "email": "{{email}}",
+    "password": "{{password}}",
+    "access_level": ["user"]
+  }
+}
+
+vars:pre-request {
+  baseUrl: http://127.0.0.1:8000/
+  first_name: Juca
+  last_name: Bala
+  username: juca.bala
+  email: juca@email.com
+  password: Senha@123
+}
+
+assert {
+  res.status: eq 201
+  res.body.email: eq {{email}}
+  res.body.username: eq {{username}}
+  res.body.is_active: eq true
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setVar("user_id", res.body.id);
+  }
+}

@@ -1,0 +1,27 @@
+meta {
+  name: 08 POST /auth/logout sem token (401)
+  type: http
+  seq: 8
+}
+
+post {
+  url: {{baseUrl}}/auth/logout
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "refresh_token": "qualquer.coisa.aqui"
+  }
+}
+
+docs {
+  Cenario tipico de confusao no Swagger: voce manda o body certo mas
+  esquece do header Authorization. O endpoint nao chega a olhar o body.
+}
+
+assert {
+  res.status: eq 401
+  res.body.detail: eq Token ausente.
+}

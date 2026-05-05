@@ -1,0 +1,16 @@
+meta {
+  name: 07 GET /users/me sem token (401)
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/users/me
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 401
+  res.body.detail: eq Token ausente.
+}

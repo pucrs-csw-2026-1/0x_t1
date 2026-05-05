@@ -1,0 +1,29 @@
+meta {
+  name: 04 Refresh
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/auth/refresh
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "refresh_token": "{{refresh_token}}"
+  }
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("access_token", res.body.access_token);
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.token_type: eq bearer
+  res.body.access_token: isDefined
+}
