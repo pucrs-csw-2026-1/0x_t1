@@ -47,11 +47,15 @@ class AuthService:
         if not self._password_hasher.verify(password, user.hashed_password.value):
             raise InvalidCredentialsError()
 
+        scopes = list(user.access_level)
         access_token = self._token_provider.generate_access_token(
             user_id=user.id,
-            scopes=list(user.access_level),
+            scopes=scopes,
         )
-        refresh_token = self._token_provider.generate_refresh_token(user_id=user.id)
+        refresh_token = self._token_provider.generate_refresh_token(
+            user_id=user.id,
+            scopes=scopes,
+        )
 
         return {
             "access_token": access_token,

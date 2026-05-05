@@ -361,5 +361,346 @@
     },
     "role": "assistant",
     "content": "Antes de pushar, valido localmente que tudo passa."
+  },
+  {
+    "timestamp": "2026-05-05T21:59:20.917Z",
+    "source": "claude",
+    "git_branch": "hotfix/restore-cd-and-error-handling",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "160 testes, ruff e mypy verdes. Push e abro o PR novo."
+  },
+  {
+    "timestamp": "2026-05-05T21:59:50.642Z",
+    "source": "claude",
+    "git_branch": "hotfix/restore-cd-and-error-handling",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "PR #57 aberto: https://github.com/pucrs-csw-2026-1/0x_t1/pull/57\n\nAguardando os checks rodarem — em ~30s consigo verificar se o gate flexibilizado passa."
+  },
+  {
+    "timestamp": "2026-05-05T21:59:55.420Z",
+    "source": "claude",
+    "git_branch": "hotfix/restore-cd-and-error-handling",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Vou verificar agora também e o wakeup serve de fallback se levar mais tempo."
+  },
+  {
+    "timestamp": "2026-05-05T22:00:11.033Z",
+    "source": "claude",
+    "git_branch": "hotfix/restore-cd-and-error-handling",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Gate passou — `Verificar branch de origem`: **SUCCESS**, mergeStateStatus: **CLEAN**.\n\nComo o CI só roda em `dev` (e não em PRs para main) e o CD roda só em push para main, este PR só tem o gate como check. Está mergeável.\n\n**Próximos passos sugeridos:**\n1. Você merge o PR #57 (sem precisar de override agora)\n2. Verifico que o CD passa na main após o merge\n3. Sigo com (A)+(B): pytest de sistema + Bruno collection\n\nQuer que eu faça o merge do PR #57? Ou prefere mergear via UI?"
+  },
+  {
+    "timestamp": "2026-05-05T22:02:00.685Z",
+    "source": "claude",
+    "git_branch": "hotfix/restore-cd-and-error-handling",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "verificar status dos checks no PR #57"
+  },
+  {
+    "timestamp": "2026-05-05T22:02:20.858Z",
+    "source": "claude",
+    "git_branch": "hotfix/restore-cd-and-error-handling",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "PR #57 está **MERGED**. Agora valido se o CD na main ficou verde."
+  },
+  {
+    "timestamp": "2026-05-05T22:02:34.779Z",
+    "source": "claude",
+    "git_branch": "hotfix/restore-cd-and-error-handling",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "CD na main rodando agora (`in_progress`). Anteriormente falhou com a mesma quebra do pytest, mas com o `cd.yml` agora atualizado deve passar. Agendo nova verificação em ~3 min (cache warm)."
+  },
+  {
+    "timestamp": "2026-05-05T22:02:49.413Z",
+    "source": "claude",
+    "git_branch": "hotfix/restore-cd-and-error-handling",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Bora. Vou pra `dev`, criar a branch `feat/system-tests-and-bruno` (nome mais descritivo que `feat/test`) e implementar os dois."
+  },
+  {
+    "timestamp": "2026-05-05T22:03:51.452Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Agora implemento o pytest de sistema. Vou ler a estrutura de fakes/fixtures e criar o arquivo."
+  },
+  {
+    "timestamp": "2026-05-05T22:04:36.774Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Antes de prosseguir, alinho com você o impacto de usar ministack — é uma decisão importante:\n\n**Opção 1: pytest de sistema com `mock_aws` (moto)**\n- ~150 linhas, roda no CI sem mudança de infra\n- Paradigma \"in-process\": mocka a API do DynamoDB no próprio Python\n- Rápido (~2-3s), 100% reprodutível\n- Já tem fixture `dynamo_repo` no `conftest.py`\n\n**Opção 2: pytest de sistema contra Ministack (LocalStack via terraform/docker-compose)**\n- Cliente boto3 bate em endpoint HTTP real (mais \"fiel à produção\")\n- Precisa Docker rodando localmente E adicionar service container no `cd.yml`/`ci.yml`\n- ~3-5x mais lento por subir o container e criar a tabela\n- Skip nos casos em que ministack não está disponível, ou bloqueia o CI\n\nPara **Bruno**, é Ministack obrigatoriamente em ambos os caminhos (precisa de app + DB acessíveis via HTTP).\n\nEu iria de **Opção 1 + Bruno na Ministack** — pytest pega 95% dos bugs de integração com 5% do custo de setup, e a Ministack fica reservada pro Bruno (onde realmente precisa). Mas se você quer fidelidade máxima, vamos de **Opção 2 + Bruno**.\n\nQual prefere?"
+  },
+  {
+    "timestamp": "2026-05-05T22:05:52.027Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "ainda estou tendo erro, meu logout pede refresh token, quando passo, ele não aceita, mas quando uso o refresh token em auth/refresh, ele devolve apenas um access token"
+  },
+  {
+    "timestamp": "2026-05-05T22:06:18.816Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Antes de aplicar mais fixes, preciso entender o que você vê exatamente. Vou olhar o código primeiro."
+  },
+  {
+    "timestamp": "2026-05-05T22:07:08.584Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Olhando o código, achei o que pode estar acontecendo. Mas antes de aplicar fix, preciso de detalhes pra não chutar.\n\n## Logout — o que pode estar acontecendo\n\nO endpoint `POST /auth/logout` exige **duas coisas ao mesmo tempo**:\n1. `Authorization: Bearer <access_token>` no **header** (validado por `get_current_user`)\n2. `{\"refresh_token\": \"...\"}` no **body** (validado pelo Pydantic)\n\nPossíveis \"não aceita\":\n\n| Sintoma | Causa provável |\n|---|---|\n| **422** Unprocessable Entity | body faltando ou sem campo `refresh_token` |\n| **401 \"Token ausente\"** | `Authorization` header ausente (ou usado refresh_token no header em vez de access_token) |\n| **401 \"Token expirado\"** | access_token expirou (~30 min depois do login) |\n| **401 \"Token inválido\"** | access_token assinado com chave/algoritmo errado |\n| **204 No Content** | logout funcionou mas retorno sem body confunde quem está testando |\n\nPra eu identificar: **qual o status code e o `detail` do erro que aparece quando você tenta logout?** E como você está montando: header `Authorization: Bearer XXX` + body `{\"refresh_token\": \"YYY\"}` certo?\n\n## Refresh — confirmado, é design (não-rotativo)\n\nO `/auth/refresh` realmente retorna **só o access_token**. O refresh_token original continua válido até expirar (7 dias) ou ser revogado pelo logout. Isso é uma escolha — duas opções:\n\n**(a) Manter como está (não-rotativo).** Cliente guarda o refresh_token do login e reusa N vezes. Simples mas se o refresh vazar, o atacante fica com acesso até a expiração.\n\n**(b) Mudar para rotating refresh tokens.** Toda chamada a `/auth/refresh` emite **novo** access + **novo** refresh, e revoga o refresh anterior. Mais seguro (RFC OAuth 2.0 BCP recomenda) mas exige mudança de contrato no `RefreshTokenResponse` + service + testes.\n\n⚠️ **Bug adjacente que achei sem você pedir:** [auth_service.py:72](backend/app/application/auth_service.py#L72) faz `scopes = payload.get(\"scopes\", [])` no refresh — mas o `generate_refresh_token` não inclui `scopes` no payload. **Resultado: depois do refresh, o novo access_token vem sem scopes.** Se algum endpoint usar `require_scope`, bloqueia. Esse provavelmente também precisa de fix.\n\nPode me dar (1) o status/detail do logout e (2) confirmar se quer (a) ou (b) no refresh?"
+  },
+  {
+    "timestamp": "2026-05-05T22:07:08.864Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "verificar resultado final do CD na main após merge do PR #57"
+  },
+  {
+    "timestamp": "2026-05-05T22:08:07.977Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "✅ **CD na main: SUCCESS** após o merge do PR #57. Pipeline destravada.\n\nAguardo agora a sua resposta sobre os bugs do logout/refresh (status code do logout + se quer rotating refresh tokens) pra continuar."
+  },
+  {
+    "timestamp": "2026-05-05T22:08:35.468Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "INFO:     127.0.0.1:37886 - \"GET /docs HTTP/1.1\" 200 OK\nINFO:     127.0.0.1:37886 - \"GET /openapi.json HTTP/1.1\" 200 OK\nINFO:     127.0.0.1:56586 - \"POST /auth/login HTTP/1.1\" 200 OK\nINFO:     127.0.0.1:35978 - \"POST /auth/logout HTTP/1.1\" 401 Unauthorized"
+  },
+  {
+    "timestamp": "2026-05-05T22:09:18.172Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "O log confirma: **401 Unauthorized no `/auth/logout`** — não é \"refresh_token rejeitado\", é o **Bearer access_token** que está faltando ou inválido. O endpoint nem chega a olhar o body antes de validar o header.\n\nHipótese mais provável: você está testando pelo `/docs` (Swagger UI), e o Swagger **não envia automaticamente** o `Authorization` header só porque você fez login via \"Try it out\" — você precisa **clicar no botão \"Authorize\"** (cadeado, canto superior direito do Swagger) e colar lá o `access_token` que veio no response do `/auth/login`. Sem isso, qualquer endpoint protegido retorna 401 \"Token ausente\".\n\nPra eu confirmar 100% e seguir com fix se for outra coisa, me passa:\n\n1. **O body da resposta 401** do logout. Provavelmente é um dos três:\n   - `{\"detail\": \"Token ausente.\"}` → header `Authorization` não está sendo enviado (cenário do Swagger acima)\n   - `{\"detail\": \"Token expirado.\"}` → access_token venceu (passaram >30min do login)\n   - `{\"detail\": \"Token inválido.\"}` → token corrompido / chave errada\n\n2. **Se você está testando via Swagger ou via curl/Postman/Bruno.**\n\nSe for o caso (1) \"Token ausente\" via Swagger, é só clicar em **Authorize** com o `access_token`, depois `/auth/logout` aceita. Não é bug — mas posso melhorar a docstring do endpoint pra deixar isso explícito, se quiser."
+  },
+  {
+    "timestamp": "2026-05-05T22:09:37.890Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "{\n  \"detail\": \"Token ausente.\"\n}"
+  },
+  {
+    "timestamp": "2026-05-05T22:10:05.487Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Confirmado — não é bug do código, é o fluxo do Swagger. O `OAuth2PasswordBearer` do FastAPI **só envia o `Authorization` header automaticamente quando você loga pelo botão \"Authorize\"** (cadeado, canto superior direito), não quando você usa \"Try it out\" no endpoint `/auth/login`.\n\n## Como usar o /docs corretamente\n\n1. Clica no **🔓 Authorize** (canto superior direito)\n2. Modal abre com campos `username` e `password` (OAuth2 password flow)\n3. Preenche com seu email + senha\n4. Clica em **Authorize** dentro do modal\n5. O Swagger chama `POST /auth/login`, recebe `access_token`, e a partir daí injeta `Authorization: Bearer <access>` em todo endpoint protegido\n\nAgora `/auth/logout` (e `/users/me`) vão receber o header e o `get_current_user` vai aceitar.\n\n> Importante: se você primeiro chamou `/auth/login` direto pela rota (Try it out) e depois tenta `/auth/logout`, o Swagger não persiste — você ainda precisa clicar em Authorize.\n\n## O que eu posso fazer no código\n\nNada que mude o fluxo do Swagger automaticamente — esse é o comportamento padrão do `OAuth2PasswordBearer`. Mas posso:\n\n1. **Melhorar a docstring** do `/auth/logout` (e `/users/me`, `/auth/refresh` se quiser) explicando o passo do Authorize. Pequeno, útil pra quem testa via Swagger.\n\n## Pontos abertos pra decidir\n\nAinda tem dois itens pra você sinalizar:\n\n- **Refresh rotativo** (item de design): manter como está (refresh_token reutilizável até expirar/logout) ou mudar pra rotativo (cada refresh emite novo refresh + revoga o anterior)?\n- **Bug dos scopes no refresh** ([auth_service.py:72](backend/app/application/auth_service.py#L72)): hoje, depois de fazer `/auth/refresh`, o novo `access_token` vem com `scopes=[]` porque o refresh_token não carrega scopes. Quer que eu inclua scopes no refresh_token (ou re-busque do user no DB) pra preservar?\n\nQuer que eu aplique:\n- (1) docstrings melhores nos endpoints autenticados, e\n- (2) fix do scopes no refresh\n\n…ainda nesta branch `feat/system-tests-and-bruno`, ou prefere outra branch pra esses ajustes?"
+  },
+  {
+    "timestamp": "2026-05-05T22:25:49.840Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "prefiro outra branch para ajustar isso"
+  },
+  {
+    "timestamp": "2026-05-05T22:27:58.351Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "[Request interrupted by user]"
+  },
+  {
+    "timestamp": "2026-05-05T22:28:03.507Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "prefiro em outra branch"
+  },
+  {
+    "timestamp": "2026-05-05T22:28:16.759Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Boa. Vou propor `fix/refresh-scopes-and-auth-docs` (cobre os dois itens: scopes no refresh + docstrings dos endpoints autenticados). A branch `feat/system-tests-and-bruno` fica pausada — sem commits, dá pra retomar depois.\n\nConfirma o nome `fix/refresh-scopes-and-auth-docs`? Ou prefere outro?"
+  },
+  {
+    "timestamp": "2026-05-05T22:28:32.963Z",
+    "source": "claude",
+    "git_branch": "feat/system-tests-and-bruno",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "pode ser este nome"
+  },
+  {
+    "timestamp": "2026-05-05T22:29:26.540Z",
+    "source": "claude",
+    "git_branch": "fix/refresh-scopes-and-auth-docs",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Plano de mudanças:\n\n1. `TokenProvider.generate_refresh_token` aceita `scopes` (default `[]`)\n2. `JwtTokenProvider` inclui `scopes` no payload do refresh\n3. `AuthService.login` passa `scopes` ao gerar refresh\n4. Docstrings melhoradas em `/auth/logout` e `/users/me` (e `/auth/refresh` mencionando que **não** precisa de Authorize)\n5. Testes ajustados/novos"
+  },
+  {
+    "timestamp": "2026-05-05T22:29:59.040Z",
+    "source": "claude",
+    "git_branch": "fix/refresh-scopes-and-auth-docs",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Agora as docstrings nos endpoints autenticados."
+  },
+  {
+    "timestamp": "2026-05-05T22:30:36.012Z",
+    "source": "claude",
+    "git_branch": "fix/refresh-scopes-and-auth-docs",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Agora rodo a suite pra ver o que quebrou e ajusto os testes."
+  },
+  {
+    "timestamp": "2026-05-05T22:31:00.624Z",
+    "source": "claude",
+    "git_branch": "fix/refresh-scopes-and-auth-docs",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "160 passam. Agora adiciono testes que garantem o comportamento novo (sem isso, regressão pode voltar)."
+  },
+  {
+    "timestamp": "2026-05-05T22:31:19.838Z",
+    "source": "claude",
+    "git_branch": "fix/refresh-scopes-and-auth-docs",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Agora teste no `test_auth_service.py` que verifica que login → refresh preserva scopes (regressão direta do bug original)."
+  },
+  {
+    "timestamp": "2026-05-05T22:32:25.909Z",
+    "source": "claude",
+    "git_branch": "fix/refresh-scopes-and-auth-docs",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "163 passa (+3). Agora ruff e mypy."
+  },
+  {
+    "timestamp": "2026-05-05T22:33:14.200Z",
+    "source": "claude",
+    "git_branch": "fix/refresh-scopes-and-auth-docs",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Tudo verde. Commit e PR."
   }
 ]

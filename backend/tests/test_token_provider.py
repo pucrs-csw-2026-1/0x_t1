@@ -45,15 +45,25 @@ class TestJwtTokenProvider:
         assert payload["scopes"] == SCOPES
         assert "exp" in payload
 
-    # CT-02: refresh token contém claims sub e exp
+    # CT-02: refresh token contém claims sub, scopes e exp
     def test_refresh_token_contem_claims_obrigatorios(
         self, provider: JwtTokenProvider
     ) -> None:
-        token = provider.generate_refresh_token(USER_ID)
+        token = provider.generate_refresh_token(USER_ID, SCOPES)
         payload = jwt.decode(token, SECRET, algorithms=[ALGORITHM])
 
         assert payload["sub"] == USER_ID
+        assert payload["scopes"] == SCOPES
         assert "exp" in payload
+
+    def test_refresh_token_sem_scopes_default_lista_vazia(
+        self, provider: JwtTokenProvider
+    ) -> None:
+        """Compatibilidade: chamadas sem o argumento scopes geram lista vazia."""
+        token = provider.generate_refresh_token(USER_ID)
+        payload = jwt.decode(token, SECRET, algorithms=[ALGORITHM])
+
+        assert payload["scopes"] == []
 
     # CT-03 (partição — válido): decode_token retorna payload correto
     def test_decode_token_valido_retorna_payload(
