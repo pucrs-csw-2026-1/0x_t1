@@ -85,7 +85,7 @@ def get_auth_service() -> AuthService:
 
     user_repository = DynamoUserRepository(table_name=settings.dynamodb_table_users)
     password_hasher = BcryptPasswordHasher()
-    token_provider = JwtTokenProvider(settings)
+    token_provider = JwtTokenProvider(settings, user_repository)
     refresh_repository = InMemoryRefreshTokenRepository()
 
     return AuthService(

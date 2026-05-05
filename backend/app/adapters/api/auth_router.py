@@ -35,6 +35,7 @@ class RefreshTokenResponse(BaseModel):
 class LogoutRequest(BaseModel):
     refresh_token: str
 
+
 @router.post(
     "/login",
     response_model=TokenResponse,
