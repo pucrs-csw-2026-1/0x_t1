@@ -16,6 +16,13 @@ from app.adapters.api.user_router import router
 from app.adapters.config.settings import Settings, settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.user_service import UserService
+from app.domain.exceptions import (
+    EmailAlreadyExistsError,
+    InvalidEmailError,
+    InvalidUsernameError,
+    UserNotFoundError,
+    WeakPasswordError,
+)
 from app.domain.user import User
 
 
@@ -77,6 +84,169 @@ class TestUserRouter:
         response = client.get("/users/me")
 
         assert response.status_code == 401
+
+    def test_get_me_usuario_inexistente_retorna_404(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-02b: GET /users/me com user_id válido no token mas usuário
+        removido do banco retorna 404 (não 500)."""
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.get_user_by_id.side_effect = UserNotFoundError(
+            "user-deletado"
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: "user-deletado"
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.get("/users/me")
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 404
+        assert "user-deletado" in response.json()["detail"]
+
+
+class TestUserRouterRegister:
+    """Testes do endpoint POST /users/register — tratamento de erros."""
+
+    def test_register_com_dados_validos_retorna_201(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        """CT-REG-01: register com payload válido retorna 201."""
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.register.return_value = valid_user
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.post(
+            "/users/register",
+            json={
+                "first_name": "Maria",
+                "last_name": "Silva",
+                "username": "maria.silva",
+                "email": "maria@example.com",
+                "password": "Senha@123",
+            },
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 201
+        assert response.json()["email"] == valid_user.email.value
+
+    def test_register_com_email_duplicado_retorna_409(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-REG-02: email já cadastrado retorna 409 (não 500)."""
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.register.side_effect = EmailAlreadyExistsError(
+            "maria@example.com"
+        )
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.post(
+            "/users/register",
+            json={
+                "first_name": "Maria",
+                "last_name": "Silva",
+                "username": "maria.silva",
+                "email": "maria@example.com",
+                "password": "Senha@123",
+            },
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 409
+        assert "maria@example.com" in response.json()["detail"]
+
+    def test_register_com_email_invalido_retorna_400(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-REG-03: email malformado retorna 400 (não 500)."""
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.register.side_effect = InvalidEmailError("nao-eh-email")
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.post(
+            "/users/register",
+            json={
+                "first_name": "Maria",
+                "last_name": "Silva",
+                "username": "maria.silva",
+                "email": "nao-eh-email",
+                "password": "Senha@123",
+            },
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 400
+        assert "nao-eh-email" in response.json()["detail"]
+
+    def test_register_com_senha_fraca_retorna_400(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-REG-04: senha fraca retorna 400 (não 500)."""
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.register.side_effect = WeakPasswordError(
+            "deve ter ao menos 8 caracteres"
+        )
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.post(
+            "/users/register",
+            json={
+                "first_name": "Maria",
+                "last_name": "Silva",
+                "username": "maria.silva",
+                "email": "maria@example.com",
+                "password": "abc",
+            },
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 400
+        assert "Senha fraca" in response.json()["detail"]
+
+    def test_register_com_username_invalido_retorna_400(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-REG-05: username inválido retorna 400 (não 500)."""
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.register.side_effect = InvalidUsernameError(
+            "username deve ter ao menos 8 caracteres"
+        )
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.post(
+            "/users/register",
+            json={
+                "first_name": "Maria",
+                "last_name": "Silva",
+                "username": "abc",
+                "email": "maria@example.com",
+                "password": "Senha@123",
+            },
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 400
+        assert "username" in response.json()["detail"].lower()
 
 
 class TestUserRouterAuthProtection:
