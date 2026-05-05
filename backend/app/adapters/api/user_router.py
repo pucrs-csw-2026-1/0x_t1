@@ -44,7 +44,12 @@ def _to_response(user: User) -> UserResponse:
     )
 
 
-@router.get("/me", response_model=UserResponse, status_code=200)
+@router.get(
+    "/me",
+    response_model=UserResponse,
+    status_code=200,
+    responses={401: {"description": "Token ausente, inválido ou expirado."}},
+)
 def get_me(
     user_id: Annotated[str, Depends(get_current_user)],
     user_service: Annotated[UserService, Depends(get_user_service)],

@@ -89,7 +89,11 @@ def refresh(
     return RefreshTokenResponse(access_token=access_token)
 
 
-@router.post("/logout", status_code=204)
+@router.post(
+    "/logout",
+    status_code=204,
+    responses={401: {"description": "Token ausente, inválido ou expirado."}},
+)
 def logout(
     body: LogoutRequest,
     user_id: Annotated[str, Depends(get_current_user)],
