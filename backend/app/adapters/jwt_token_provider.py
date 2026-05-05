@@ -6,11 +6,15 @@ from jose import ExpiredSignatureError, JWTError, jwt
 from app.adapters.config.settings import Settings
 from app.domain.exceptions import InvalidTokenError, TokenExpiredError
 from app.ports.token_provider import TokenProvider
+from app.ports.user_repository import UserRepository
 
 
 class JwtTokenProvider(TokenProvider):
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self, settings: Settings, user_repository: UserRepository | None = None
+    ) -> None:
         self._settings = settings
+        self._user_repository = user_repository
 
     def generate_access_token(self, user_id: str, scopes: list[str]) -> str:
         """Gera um JWT de acesso com claims sub, scopes e exp."""
@@ -22,6 +26,15 @@ class JwtTokenProvider(TokenProvider):
             "scopes": scopes,
             "exp": expire,
         }
+        # Optionally include user email in the token if a user repository is available
+        try:
+            if self._user_repository is not None:
+                user = self._user_repository.find_by_id(user_id)
+                if user is not None:
+                    payload["email"] = user.email.value
+        except Exception:
+            # Be defensive: do not break token generation if repository lookup fails
+            pass
         token: str = jwt.encode(
             payload, self._settings.secret_key, algorithm=self._settings.algorithm
         )
