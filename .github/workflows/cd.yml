@@ -74,15 +74,6 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Executar testes com cobertura
-        env:
-          SECRET_KEY: test-secret-key-for-ci
-          ALGORITHM: HS256
-          ACCESS_TOKEN_EXPIRE_MINUTES: 30
-          REFRESH_TOKEN_EXPIRE_DAYS: 7
-          AWS_REGION: us-east-1
-          AWS_ACCESS_KEY_ID: test
-          AWS_SECRET_ACCESS_KEY: test
-          DYNAMODB_TABLE_USERS: user
         run: pytest --cov=app --cov-report=term-missing --cov-fail-under=80 -v
 
   # Job 'build' temporariamente desabilitado: nao existe Dockerfile no repo ainda.
