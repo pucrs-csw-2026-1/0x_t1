@@ -37,8 +37,7 @@ class AuthService:
             raise InvalidCredentialsError()
 
         access_token = self._token_provider.generate_access_token(
-            user_id=user.id,
-            scopes=list(user.access_level),
+            user_email=user.email.value,
         )
         refresh_token = self._token_provider.generate_refresh_token(user_id=user.id)
 
@@ -68,11 +67,9 @@ class AuthService:
         if payload.get("revoked") is True:
             raise TokenRevokedError()
 
-        user_id = payload["sub"]
-        scopes = payload.get("scopes", [])
+        user_email = payload.get("email")
         return self._token_provider.generate_access_token(
-            user_id=user_id,
-            scopes=scopes,
+            user_email=user_email,
         )
 
     def logout(self, refresh_token: str) -> None:

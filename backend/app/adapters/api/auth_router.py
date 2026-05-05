@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Form, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 
@@ -8,6 +8,7 @@ from app.adapters.api.dependencies import get_auth_service, get_current_user
 from app.application.auth_service import AuthService
 from app.domain.exceptions import (
     InvalidCredentialsError,
+    InvalidEmailError,
     InvalidTokenError,
     TokenExpiredError,
     TokenRevokedError,
@@ -34,23 +35,32 @@ class RefreshTokenResponse(BaseModel):
 class LogoutRequest(BaseModel):
     refresh_token: str
 
-
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    responses={401: {"description": "Credenciais invalidas."}},
+    description=(
+        "Autentica via OAuth2 Password Flow. "
+        "O campo `username` recebe o email cadastrado."
+    ),
+)
 def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    username: str = Form(..., description="Email cadastrado do usuario."),
+    password: str = Form(..., description="Senha do usuario."),
     auth_service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
-    """Autentica usuário com email e senha, retornando access e refresh tokens."""
     try:
-        token_data = auth_service.login(
-            email=form_data.username,
-            password=form_data.password,
-        )
+        token_data = auth_service.login(email=username, password=password)
         return TokenResponse(
             access_token=token_data["access_token"],
             refresh_token=token_data["refresh_token"],
             token_type="bearer",
         )
+    except InvalidEmailError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except InvalidCredentialsError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

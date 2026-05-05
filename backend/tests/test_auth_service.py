@@ -17,6 +17,7 @@ from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.auth_service import AuthService
 from app.domain.exceptions import (
     InvalidCredentialsError,
+    InvalidEmailError,
     InvalidTokenError,
     TokenExpiredError,
     TokenRevokedError,
@@ -134,6 +135,14 @@ class TestAuthServiceLogin:
             auth_service.login(email=valid_user.email.value, password="SenhaErrada@1")
 
         token_provider_mock.generate_access_token.assert_not_called()
+
+    def test_login_com_email_invalido_lanca_erro(
+        self,
+        auth_service: AuthService,
+    ) -> None:
+        """CT-04: Email malformado lança InvalidEmailError."""
+        with pytest.raises(InvalidEmailError):
+            auth_service.login(email="email-invalido", password="Senha@123")
 
 
 class TestAuthServiceRefresh:
