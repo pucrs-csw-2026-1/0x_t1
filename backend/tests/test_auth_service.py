@@ -167,6 +167,52 @@ class TestAuthServiceRefresh:
         payload = jwt_token_provider.decode_token(access_token)
         assert payload["sub"] == USER_ID
 
+    def test_refresh_preserva_scopes_do_refresh_token(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+    ) -> None:
+        """CT-04b: refresh com refresh_token contendo scopes deve emitir
+        access_token com os mesmos scopes (regressão: antes saía vazio
+        porque generate_refresh_token não incluía scopes no payload)."""
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+        )
+        refresh_token = jwt_token_provider.generate_refresh_token(USER_ID, SCOPES)
+
+        access_token = auth_service.refresh(refresh_token)
+
+        payload = jwt_token_provider.decode_token(access_token)
+        assert payload["scopes"] == SCOPES
+
+    def test_login_seguido_de_refresh_preserva_scopes_do_usuario(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+        valid_user: User,
+    ) -> None:
+        """CT-04c: ponta-a-ponta — login emite refresh com scopes do usuário,
+        e refresh subsequente preserva esses scopes no novo access_token."""
+        valid_user.access_level = ["user", "admin"]
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = True
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+        )
+
+        tokens = auth_service.login(email=valid_user.email.value, password="Senha@123")
+        new_access = auth_service.refresh(tokens["refresh_token"])
+
+        payload = jwt_token_provider.decode_token(new_access)
+        assert payload["scopes"] == ["user", "admin"]
+
     def test_refresh_token_expirado_lanca_excecao(
         self,
         user_repository_mock: UserRepository,

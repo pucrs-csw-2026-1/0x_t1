@@ -40,13 +40,16 @@ class JwtTokenProvider(TokenProvider):
         )
         return token
 
-    def generate_refresh_token(self, user_id: str) -> str:
-        """Gera um JWT de refresh com claims sub e exp."""
+    def generate_refresh_token(
+        self, user_id: str, scopes: list[str] | None = None
+    ) -> str:
+        """Gera um JWT de refresh com claims sub, scopes e exp."""
         expire = datetime.now(timezone.utc) + timedelta(
             days=self._settings.refresh_token_expire_days
         )
         payload: dict[str, Any] = {
             "sub": user_id,
+            "scopes": scopes or [],
             "exp": expire,
         }
         token: str = jwt.encode(

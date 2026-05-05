@@ -1,0 +1,26 @@
+meta {
+  name: 06 Login email malformado (401 Credenciais invalidas)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: nao-eh-email
+  password: Senha@123
+}
+
+docs {
+  Regressao: antes do PR #55 isso retornava 400 vazando o formato do
+  email. Agora deve ser 401 'Credenciais invalidas' (sem enumeracao).
+}
+
+assert {
+  res.status: eq 401
+  res.body.detail: eq Credenciais inválidas.
+}

@@ -1,0 +1,21 @@
+meta {
+  name: 05 Login email inexistente (401)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: ninguem@example.com
+  password: Senha@123
+}
+
+assert {
+  res.status: eq 401
+  res.body.detail: eq Credenciais inválidas.
+}

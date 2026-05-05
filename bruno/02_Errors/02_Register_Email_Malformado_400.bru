@@ -1,0 +1,26 @@
+meta {
+  name: 02 Register email malformado (400)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Outro",
+    "last_name": "User",
+    "username": "outro.user",
+    "email": "nao-eh-email",
+    "password": "Senha@123"
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.detail: contains nao-eh-email
+}

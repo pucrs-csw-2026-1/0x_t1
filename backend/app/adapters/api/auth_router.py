@@ -63,7 +63,17 @@ def login(
         ) from exc
 
 
-@router.post("/refresh", response_model=RefreshTokenResponse, status_code=200)
+@router.post(
+    "/refresh",
+    response_model=RefreshTokenResponse,
+    status_code=200,
+    description=(
+        "Renova o access token a partir de um refresh token válido. "
+        "**Não requer Authorization header** — o refresh token vai no body. "
+        "Retorna apenas o novo access token; o refresh token original "
+        "permanece válido até expirar ou ser revogado via /auth/logout."
+    ),
+)
 def refresh(
     request: RefreshRequest,
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
@@ -97,6 +107,16 @@ def refresh(
     "/logout",
     status_code=204,
     responses={401: {"description": "Token ausente, inválido ou expirado."}},
+    description=(
+        "Revoga o refresh token do usuário autenticado.\n\n"
+        "**Requer dois tokens em paralelo:**\n"
+        "- `Authorization: Bearer <access_token>` no header (validação da sessão);\n"
+        '- `{"refresh_token": "<refresh_token>"}` no body (alvo da revogação).\n\n'
+        "Para testar via Swagger UI: clique no botão **Authorize** "
+        "(cadeado, canto superior direito), preencha email/senha e autorize. "
+        "O Swagger passa a injetar o Authorization header automaticamente "
+        "neste e nos demais endpoints protegidos."
+    ),
 )
 def logout(
     body: LogoutRequest,

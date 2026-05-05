@@ -11,8 +11,15 @@ class TokenProvider(ABC):
         ...
 
     @abstractmethod
-    def generate_refresh_token(self, user_id: str) -> str:
-        """Gera um refresh token para o usuário."""
+    def generate_refresh_token(
+        self, user_id: str, scopes: list[str] | None = None
+    ) -> str:
+        """Gera um refresh token para o usuário.
+
+        ``scopes`` é incluído no payload para que ``refresh`` possa emitir
+        novo access token preservando os escopos originais (sem precisar
+        bater no banco).
+        """
         ...
 
     @abstractmethod
