@@ -60,6 +60,12 @@ def _to_response(user: User) -> UserResponse:
         401: {"description": "Token ausente, inválido ou expirado."},
         404: {"description": "Usuário não encontrado."},
     },
+    description=(
+        "Retorna os dados do usuário autenticado.\n\n"
+        "Requer `Authorization: Bearer <access_token>` no header. "
+        "Para testar via Swagger UI, clique em **Authorize** (cadeado) "
+        "antes de executar."
+    ),
 )
 def get_me(
     user_id: Annotated[str, Depends(get_current_user)],
