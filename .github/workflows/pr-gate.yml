@@ -9,12 +9,12 @@ jobs:
     name: Verificar branch de origem
     runs-on: ubuntu-latest
     steps:
-      - name: Bloquear PRs que nao venham de dev
-        if: github.head_ref != 'dev'
+      - name: Bloquear PRs que nao venham de dev ou hotfix/*
+        if: github.head_ref != 'dev' && !startsWith(github.head_ref, 'hotfix/')
         run: |
-          echo "::error::PRs para main so sao aceitos vindos de dev. Branch atual: ${{ github.head_ref }}"
+          echo "::error::PRs para main so sao aceitos vindos de 'dev' ou 'hotfix/*'. Branch atual: ${{ github.head_ref }}"
           exit 1
 
       - name: Branch permitida
-        if: github.head_ref == 'dev'
-        run: echo "PR vindo de dev — permitido."
+        if: github.head_ref == 'dev' || startsWith(github.head_ref, 'hotfix/')
+        run: echo "PR vindo de '${{ github.head_ref }}' — permitido."
