@@ -11,7 +11,7 @@ from app.application.auth_service import AuthService
 from app.application.user_service import UserService
 from app.domain.exceptions import InvalidTokenError, TokenExpiredError
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def get_current_user(
