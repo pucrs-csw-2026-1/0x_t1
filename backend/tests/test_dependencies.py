@@ -152,3 +152,17 @@ class TestGetAuthService:
         service = get_auth_service()
 
         assert isinstance(service, AuthService)
+
+    def test_get_auth_service_compartilha_refresh_repository_entre_chamadas(
+        self,
+    ) -> None:
+        """CT-10: refresh_repository é singleton de processo.
+
+        Sem isso, logout numa request não invalida o token em requests
+        seguintes (cada chamada criaria um set _revoked vazio).
+        """
+        service_a = get_auth_service()
+        service_b = get_auth_service()
+
+        assert service_a._refresh_repository is service_b._refresh_repository
+        assert service_a._refresh_repository is not None
