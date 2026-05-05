@@ -6,20 +6,12 @@ from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.adapters.config.settings import settings
 from app.adapters.dynamo_user_repository import DynamoUserRepository
-from app.adapters.in_memory_refresh_token_repository import (
-    InMemoryRefreshTokenRepository,
-)
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.auth_service import AuthService
 from app.application.user_service import UserService
 from app.domain.exceptions import InvalidTokenError, TokenExpiredError
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
-
-# Singleton de processo: o set de refresh tokens revogados precisa sobreviver
-# entre requests, senão o logout não tem efeito (cada request criaria um repo
-# vazio). Em produção, substituir por um repositório persistente (Redis/DDB).
-_refresh_token_repository = InMemoryRefreshTokenRepository()
 
 
 def get_current_user(
@@ -87,13 +79,18 @@ def get_user_service() -> UserService:
 
 def get_auth_service() -> AuthService:
     """Constrói e retorna uma instância de AuthService."""
+    from app.adapters.in_memory_refresh_token_repository import (
+        InMemoryRefreshTokenRepository,
+    )
+
     user_repository = DynamoUserRepository(table_name=settings.dynamodb_table_users)
     password_hasher = BcryptPasswordHasher()
     token_provider = JwtTokenProvider(settings, user_repository)
+    refresh_repository = InMemoryRefreshTokenRepository()
 
     return AuthService(
         user_repository=user_repository,
         password_hasher=password_hasher,
         token_provider=token_provider,
-        refresh_repository=_refresh_token_repository,
+        refresh_repository=refresh_repository,
     )

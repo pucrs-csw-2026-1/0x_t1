@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-from app.domain.exceptions import (
-    InvalidCredentialsError,
-    InvalidEmailError,
-    TokenRevokedError,
-)
+from app.domain.exceptions import InvalidCredentialsError, TokenRevokedError
 from app.domain.user import Email
 from app.ports.password_hasher import PasswordHasher
 from app.ports.refresh_token_repository import RefreshTokenRepository
@@ -31,16 +27,9 @@ class AuthService:
         """Autentica usuário com email e senha.
 
         Raises:
-            InvalidCredentialsError: se email malformado, inexistente, ou senha
-                incorreta. Email malformado é tratado como credencial inválida
-                para não vazar informação sobre a base de usuários.
+            InvalidCredentialsError: se email inexistente ou senha incorreta.
         """
-        try:
-            email_vo = Email(email)
-        except InvalidEmailError as exc:
-            raise InvalidCredentialsError() from exc
-
-        user = self._user_repository.find_by_email(email_vo)
+        user = self._user_repository.find_by_email(Email(email))
         if user is None:
             raise InvalidCredentialsError()
 

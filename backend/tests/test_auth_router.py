@@ -118,28 +118,6 @@ class TestAuthRouterLogin:
         assert response.json()["detail"] == "Credenciais inválidas."
         assert response.headers["www-authenticate"] == "Bearer"
 
-    def test_login_com_email_malformado_retorna_401_credenciais_invalidas(
-        self,
-        app: FastAPI,
-        client: TestClient,
-    ) -> None:
-        """CT-02b: email malformado vira 401 'Credenciais inválidas' (não vaza
-        formato/existência do usuário)."""
-        auth_service_mock = create_autospec(AuthService, instance=True)
-        auth_service_mock.login.side_effect = InvalidCredentialsError()
-        app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
-
-        response = client.post(
-            "/auth/login",
-            data={"username": "nao-eh-email", "password": "Senha@123"},
-        )
-
-        app.dependency_overrides.clear()
-
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Credenciais inválidas."
-        assert response.headers["www-authenticate"] == "Bearer"
-
 
 class TestAuthRouterRefresh:
     """Testes do endpoint POST /auth/refresh."""

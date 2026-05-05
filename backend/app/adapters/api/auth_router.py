@@ -7,6 +7,7 @@ from app.adapters.api.dependencies import get_auth_service, get_current_user
 from app.application.auth_service import AuthService
 from app.domain.exceptions import (
     InvalidCredentialsError,
+    InvalidEmailError,
     InvalidTokenError,
     TokenExpiredError,
     TokenRevokedError,
@@ -55,6 +56,11 @@ def login(
             refresh_token=token_data["refresh_token"],
             token_type="bearer",
         )
+    except InvalidEmailError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except InvalidCredentialsError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
