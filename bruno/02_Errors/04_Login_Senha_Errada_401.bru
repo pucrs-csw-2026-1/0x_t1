@@ -1,0 +1,26 @@
+meta {
+  name: 04 Login senha errada (401)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: {{email}}
+  password: SenhaErrada@9
+}
+
+docs {
+  Pre-condicao: rodar 01_Happy_Path/01_Register antes (email precisa
+  existir para o login chegar na fase de verificar senha).
+}
+
+assert {
+  res.status: eq 401
+  res.body.detail: eq Credenciais inválidas.
+}

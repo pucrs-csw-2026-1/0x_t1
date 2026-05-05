@@ -1,0 +1,22 @@
+meta {
+  name: 06 Refresh apos Logout (401 revogado)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/auth/refresh
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "refresh_token": "{{refresh_token}}"
+  }
+}
+
+assert {
+  res.status: eq 401
+  res.body.detail: contains revogado
+}

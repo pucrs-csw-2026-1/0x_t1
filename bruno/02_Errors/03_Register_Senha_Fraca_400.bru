@@ -1,0 +1,26 @@
+meta {
+  name: 03 Register senha fraca (400)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Outro",
+    "last_name": "User",
+    "username": "outro.user",
+    "email": "outro@example.com",
+    "password": "abc"
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.detail: contains Senha
+}
