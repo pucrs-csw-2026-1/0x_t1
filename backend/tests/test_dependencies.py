@@ -1,10 +1,14 @@
-"""Testes unitários para validação de escopos via require_scope (US-12)."""
+"""Testes unitários para validação de escopos via require_scope (US-12)
+e cobertura de decisão do get_current_user (US-11)."""
 
+from datetime import datetime, timedelta, timezone
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
 from fastapi.security import SecurityScopes
+from jose import jwt
 
 from app.adapters.api.dependencies import (
     get_auth_service,
@@ -113,6 +117,21 @@ class TestRequireScope:
         user_id = _call(token_provider, token, required_scopes=[])
 
         assert user_id == USER_ID
+
+    # CT-11: token expirado retorna 401 (cobertura de decisão US-11)
+    def test_token_expirado_retorna_401(self, token_provider: JwtTokenProvider) -> None:
+        expired_payload: dict[str, Any] = {
+            "sub": USER_ID,
+            "scopes": ["user"],
+            "exp": datetime.now(timezone.utc) - timedelta(hours=1),
+        }
+        expired_token = jwt.encode(expired_payload, SECRET, algorithm=ALGORITHM)
+
+        with pytest.raises(HTTPException) as exc_info:
+            _call(token_provider, expired_token, required_scopes=[])
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "Token expirado."
 
 
 class TestGetUserService:

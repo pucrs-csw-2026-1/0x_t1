@@ -1,4 +1,4 @@
-"""Testes de integração para auth_router (US-06 login e US-08 logout)."""
+"""Testes de integração para auth_router (US-06 login, US-08 logout, US-11 proteção)."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from app.adapters.api.dependencies import (
     get_current_user,
 )
 from app.adapters.config.settings import Settings
+from app.adapters.config.settings import settings as global_settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.auth_service import AuthService
 from app.domain.exceptions import (
@@ -57,6 +58,13 @@ def settings() -> Settings:
 @pytest.fixture
 def token_provider(settings: Settings) -> JwtTokenProvider:
     return JwtTokenProvider(settings)
+
+
+@pytest.fixture
+def global_token_provider() -> JwtTokenProvider:
+    """Provider que usa o settings global — gera tokens decodáveis pelo
+    pipeline real do get_current_user (sem override de dependency)."""
+    return JwtTokenProvider(global_settings)
 
 
 class TestAuthRouterLogin:
@@ -253,3 +261,99 @@ class TestAuthRouterLogout:
         app.dependency_overrides.clear()
 
         assert response.status_code == 401
+
+
+class TestAuthRouterLogoutAuthProtection:
+    """Testes end-to-end da proteção JWT em POST /auth/logout (US-11).
+
+    Não sobrescreve get_current_user — exerce o pipeline real para cobrir
+    a tabela de decisão exigida nos critérios de aceite.
+    """
+
+    def test_logout_com_token_valido_retorna_204(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        global_token_provider: JwtTokenProvider,
+    ) -> None:
+        """CT-09: logout com Bearer token válido decodifica e chama logout."""
+        auth_service_mock = create_autospec(AuthService, instance=True)
+        app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
+
+        access_token = global_token_provider.generate_access_token(
+            USER_ID, scopes=["user"]
+        )
+        refresh_token = global_token_provider.generate_refresh_token(USER_ID)
+
+        response = client.post(
+            "/auth/logout",
+            json={"refresh_token": refresh_token},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 204
+        auth_service_mock.logout.assert_called_once_with(refresh_token)
+
+    def test_logout_com_token_expirado_retorna_401(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-10: logout com access token expirado retorna 401."""
+        auth_service_mock = create_autospec(AuthService, instance=True)
+        app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
+
+        expired_payload: dict[str, Any] = {
+            "sub": USER_ID,
+            "scopes": ["user"],
+            "exp": datetime.now(timezone.utc) - timedelta(hours=1),
+        }
+        access_token = jwt.encode(
+            expired_payload,
+            global_settings.secret_key,
+            algorithm=global_settings.algorithm,
+        )
+
+        response = client.post(
+            "/auth/logout",
+            json={"refresh_token": "qualquer.refresh.token"},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Token expirado."
+        auth_service_mock.logout.assert_not_called()
+
+    def test_logout_com_token_assinatura_invalida_retorna_401(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-11: logout com access token assinado com chave errada retorna 401."""
+        auth_service_mock = create_autospec(AuthService, instance=True)
+        app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
+
+        payload: dict[str, Any] = {
+            "sub": USER_ID,
+            "scopes": ["user"],
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+        }
+        access_token = jwt.encode(
+            payload, "chave-de-atacante", algorithm=global_settings.algorithm
+        )
+
+        response = client.post(
+            "/auth/logout",
+            json={"refresh_token": "qualquer.refresh.token"},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Token inválido."
+        auth_service_mock.logout.assert_not_called()
