@@ -216,5 +216,6 @@ crash.log
 crash.*.log
 # .terraform.lock.hcl is intentionally committed (locks provider versions)
 
-# LocalStack
+# LocalStack / Ministack
 **/.localstack/
+**/.ministack-data/
