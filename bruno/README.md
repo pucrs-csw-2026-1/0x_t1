@@ -18,13 +18,16 @@ camada manual de fidelidade total contra a stack que dev usa.
 # 1) Ministack (na raiz do projeto)
 cd terraform && docker compose up -d
 
-# 2) Provisionar a tabela 'user' no DynamoDB local
-cd terraform && terraform init && terraform apply -auto-approve
-
-# 3) App FastAPI
+# 2) App FastAPI — em app_env=development o lifespan cria a tabela
+#    automaticamente se ela não existir (defensive bootstrap).
 cd backend && uvicorn app.main:app --reload
 # servirá em http://localhost:8000
 ```
+
+> Para provisionar via IaC explicitamente (recomendado em time/CI),
+> rode `cd terraform && terraform init && terraform apply -auto-approve`
+> antes do passo 2. O volume `.ministack-data/` configurado no
+> compose mantém a tabela entre restarts do container.
 
 ## Como rodar a collection
 

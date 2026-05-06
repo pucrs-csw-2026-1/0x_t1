@@ -8,3 +8,9 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
+      # Mantém o estado do DynamoDB (e demais serviços) entre restarts
+      # do container. Sem isto, parar e subir o compose zera a tabela
+      # 'user' e os endpoints retornam ResourceNotFoundException.
+      - PERSISTENCE=1
+    volumes:
+      - ./.ministack-data:/var/lib/localstack
