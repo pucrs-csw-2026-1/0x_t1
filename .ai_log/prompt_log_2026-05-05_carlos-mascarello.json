@@ -1,0 +1,114 @@
+[
+  {
+    "timestamp": "2026-05-05T21:44:44.247Z",
+    "source": "codex",
+    "git_branch": "dev",
+    "git_user_name": "Carlos Mascarello",
+    "call_context": {
+      "timestamp": "2026-05-05T21:44:44.152Z",
+      "hook_event_name": "UserPromptSubmit",
+      "transcript_path": "/home/carlosmascarello/.config/Code/User/workspaceStorage/e890c0435f58a3a5efe5eafc73ef0f49/GitHub.copilot-chat/transcripts/0295e52d-fb63-4160-a29c-0c274ae7e842.jsonl",
+      "cwd": "/home/carlosmascarello/Documentos/PUCRS/2026_1/Construcao/0x_t1/.ai_log"
+    },
+    "role": "user",
+    "content": "consegue analisar se log_prompt.sh esta funcionando?"
+  },
+  {
+    "timestamp": "2026-05-05T21:45:54.650Z",
+    "source": "codex",
+    "git_branch": "dev",
+    "git_user_name": "Carlos Mascarello",
+    "call_context": {
+      "timestamp": "2026-05-05T21:45:54.552Z",
+      "hook_event_name": "UserPromptSubmit",
+      "transcript_path": "/home/carlosmascarello/.config/Code/User/workspaceStorage/e890c0435f58a3a5efe5eafc73ef0f49/GitHub.copilot-chat/transcripts/7db238eb-d869-49c1-827e-19ab74434e92.jsonl",
+      "cwd": "/home/carlosmascarello/Documentos/PUCRS/2026_1/Construcao/0x_t1/.ai_log"
+    },
+    "role": "user",
+    "content": "."
+  },
+  {
+    "timestamp": "2026-05-05T21:46:05.650Z",
+    "source": "codex",
+    "git_branch": "dev",
+    "git_user_name": "Carlos Mascarello",
+    "call_context": {
+      "timestamp": "2026-05-05T21:46:05.566Z",
+      "hook_event_name": "UserPromptSubmit",
+      "transcript_path": "/home/carlosmascarello/.config/Code/User/workspaceStorage/e890c0435f58a3a5efe5eafc73ef0f49/GitHub.copilot-chat/transcripts/8e565a8c-0b9d-4c5e-9e1d-a5b13ce16bd4.jsonl",
+      "cwd": "/home/carlosmascarello/Documentos/PUCRS/2026_1/Construcao/0x_t1/.ai_log"
+    },
+    "role": "user",
+    "content": "."
+  },
+  {
+    "timestamp": "2026-05-05T21:46:16.475Z",
+    "source": "codex",
+    "git_branch": "dev",
+    "git_user_name": "Carlos Mascarello",
+    "call_context": {
+      "timestamp": "2026-05-05T21:46:16.391Z",
+      "hook_event_name": "UserPromptSubmit",
+      "transcript_path": "/home/carlosmascarello/.config/Code/User/workspaceStorage/e890c0435f58a3a5efe5eafc73ef0f49/GitHub.copilot-chat/transcripts/e1fa2e64-3471-4168-9b80-8bca9a06f27a.jsonl",
+      "cwd": "/home/carlosmascarello/Documentos/PUCRS/2026_1/Construcao/0x_t1/.ai_log"
+    },
+    "role": "user",
+    "content": "."
+  },
+  {
+    "timestamp": "2026-05-05T21:46:27.890Z",
+    "source": "codex",
+    "git_branch": "dev",
+    "git_user_name": "Carlos Mascarello",
+    "call_context": {
+      "timestamp": "2026-05-05T21:46:27.799Z",
+      "hook_event_name": "UserPromptSubmit",
+      "transcript_path": "/home/carlosmascarello/.config/Code/User/workspaceStorage/e890c0435f58a3a5efe5eafc73ef0f49/GitHub.copilot-chat/transcripts/8e78dde1-336a-409b-a5ec-34a560bbb120.jsonl",
+      "cwd": "/home/carlosmascarello/Documentos/PUCRS/2026_1/Construcao/0x_t1/.ai_log"
+    },
+    "role": "user",
+    "content": "."
+  },
+  {
+    "timestamp": "2026-05-05T21:46:31.424Z",
+    "source": "codex",
+    "git_branch": "dev",
+    "git_user_name": "Carlos Mascarello",
+    "call_context": {
+      "timestamp": "2026-05-05T21:46:31.340Z",
+      "hook_event_name": "UserPromptSubmit",
+      "transcript_path": "/home/carlosmascarello/.config/Code/User/workspaceStorage/e890c0435f58a3a5efe5eafc73ef0f49/GitHub.copilot-chat/transcripts/34e51208-3e13-40e9-b572-8531feafa221.jsonl",
+      "cwd": "/home/carlosmascarello/Documentos/PUCRS/2026_1/Construcao/0x_t1/.ai_log"
+    },
+    "role": "user",
+    "content": "."
+  },
+  {
+    "timestamp": "2026-05-05T21:46:35.043Z",
+    "source": "codex",
+    "git_branch": "dev",
+    "git_user_name": "Carlos Mascarello",
+    "call_context": {
+      "timestamp": "2026-05-05T21:46:34.951Z",
+      "hook_event_name": "UserPromptSubmit",
+      "transcript_path": "/home/carlosmascarello/.config/Code/User/workspaceStorage/e890c0435f58a3a5efe5eafc73ef0f49/GitHub.copilot-chat/transcripts/002e86d8-e537-41b9-9123-4720405b412b.jsonl",
+      "cwd": "/home/carlosmascarello/Documentos/PUCRS/2026_1/Construcao/0x_t1/.ai_log"
+    },
+    "role": "user",
+    "content": "."
+  },
+  {
+    "timestamp": "2026-05-05T21:48:53.383Z",
+    "source": "codex",
+    "git_branch": "dev",
+    "git_user_name": "Carlos Mascarello",
+    "call_context": {
+      "timestamp": "2026-05-05T21:48:53.307Z",
+      "hook_event_name": "UserPromptSubmit",
+      "transcript_path": "/home/carlosmascarello/.config/Code/User/workspaceStorage/e890c0435f58a3a5efe5eafc73ef0f49/GitHub.copilot-chat/transcripts/7db238eb-d869-49c1-827e-19ab74434e92.jsonl",
+      "cwd": "/home/carlosmascarello/Documentos/PUCRS/2026_1/Construcao/0x_t1/.ai_log"
+    },
+    "role": "user",
+    "content": "consegue rodar o log_prompts.sh para as interações anteriores?"
+  }
+]

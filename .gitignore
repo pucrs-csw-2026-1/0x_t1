@@ -219,3 +219,8 @@ crash.*.log
 # LocalStack / Ministack
 **/.localstack/
 **/.ministack-data/
+
+# AI logs Skills
+.ai_log/log_prompts.sh
+.github/hooks/hooks.json
+.claude/settings.json
