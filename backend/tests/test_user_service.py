@@ -10,6 +10,7 @@ from app.domain.exceptions import (
     AccessLevelNotFoundError,
     EmailAlreadyExistsError,
     InvalidEmailError,
+    InvalidPaginationError,
     UserNotFoundError,
     WeakPasswordError,
 )
@@ -295,3 +296,127 @@ class TestUserServiceRegister:
         )
 
         assert user.access_level == ["uuid-user-fake"]
+
+
+class TestUserServiceListUsers:
+    """Testes de UserService.list_users (US-14)."""
+
+    @pytest.fixture
+    def service(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> UserService:
+        return UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
+
+    @staticmethod
+    def _make_user(seq: int) -> User:
+        # IDs sequenciais para ordenacao deterministica nos testes.
+        return User(
+            id=f"user-{seq:04d}",
+            username=Username(f"user.{seq:04d}"),
+            email=Email(f"user{seq}@example.com"),
+            hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+            first_name="Test",
+            last_name=f"User{seq}",
+        )
+
+    # CT-14.1: lista vazia retorna pagina vazia sem cursor
+    def test_repo_vazio_retorna_pagina_vazia_sem_cursor(
+        self, service: UserService
+    ) -> None:
+        page = service.list_users(limit=20)
+
+        assert page.items == []
+        assert page.next_cursor is None
+
+    # CT-14.2: quantidade < limit retorna todos sem cursor
+    def test_quantidade_menor_que_limit_retorna_todos(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        for i in range(1, 4):
+            fake_repo.save(self._make_user(i))
+
+        page = service.list_users(limit=10)
+
+        assert len(page.items) == 3
+        assert page.next_cursor is None
+
+    # CT-14.3: quantidade > limit devolve cursor para proxima pagina
+    def test_quantidade_maior_que_limit_devolve_cursor(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        for i in range(1, 6):
+            fake_repo.save(self._make_user(i))
+
+        page = service.list_users(limit=2)
+
+        assert len(page.items) == 2
+        assert page.next_cursor == page.items[-1].id
+
+    # CT-14.4: cursor avanca para a proxima pagina sem repetir items
+    def test_cursor_avanca_para_proxima_pagina(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        for i in range(1, 6):
+            fake_repo.save(self._make_user(i))
+
+        primeira = service.list_users(limit=2)
+        segunda = service.list_users(limit=2, cursor=primeira.next_cursor)
+
+        ids_primeira = {u.id for u in primeira.items}
+        ids_segunda = {u.id for u in segunda.items}
+        assert ids_primeira.isdisjoint(ids_segunda)
+        assert len(segunda.items) == 2
+
+    # CT-14.5: ultima pagina sinaliza fim com next_cursor None
+    def test_ultima_pagina_retorna_next_cursor_none(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        for i in range(1, 4):
+            fake_repo.save(self._make_user(i))
+
+        primeira = service.list_users(limit=2)
+        segunda = service.list_users(limit=2, cursor=primeira.next_cursor)
+
+        assert len(segunda.items) == 1
+        assert segunda.next_cursor is None
+
+    # CT-14.6: paginar 5 items de 2 em 2 cobre todos exatamente uma vez
+    def test_paginacao_completa_cobre_todos_os_itens(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        ids_criados: list[str] = []
+        for i in range(1, 6):
+            user = self._make_user(i)
+            fake_repo.save(user)
+            ids_criados.append(user.id)
+
+        coletados: list[str] = []
+        cursor: str | None = None
+        while True:
+            page = service.list_users(limit=2, cursor=cursor)
+            coletados.extend(u.id for u in page.items)
+            if page.next_cursor is None:
+                break
+            cursor = page.next_cursor
+
+        assert sorted(coletados) == sorted(ids_criados)
+
+    # CT-14.7: cursor inexistente lanca InvalidPaginationError
+    def test_cursor_inexistente_lanca_excecao(self, service: UserService) -> None:
+        with pytest.raises(InvalidPaginationError):
+            service.list_users(limit=20, cursor="cursor-que-nao-existe")

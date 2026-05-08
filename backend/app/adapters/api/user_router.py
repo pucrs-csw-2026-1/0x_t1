@@ -43,7 +43,7 @@ class UserCreate(BaseModel):
     )
 
 
-def _to_response(user: User) -> UserResponse:
+def to_user_response(user: User) -> UserResponse:
     return UserResponse(
         id=user.id,
         first_name=user.first_name,
@@ -83,7 +83,7 @@ def get_me(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc
-    return _to_response(user)
+    return to_user_response(user)
 
 
 @router.post(
@@ -122,4 +122,4 @@ def register_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    return _to_response(user)
+    return to_user_response(user)
