@@ -1,0 +1,21 @@
+meta {
+  name: 01 List Users Sem Token 401
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/admin/users
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 401
+}
+
+docs {
+  Gate de autenticação: rota /admin/users exige Bearer.
+  Sem header Authorization, FastAPI retorna 401 antes de chegar na
+  checagem de scope.
+}

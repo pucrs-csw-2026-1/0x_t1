@@ -1,0 +1,56 @@
+meta {
+  name: 03 List Users Token Admin 200
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/admin/users?limit=1
+  body: none
+  auth: bearer
+}
+
+params:query {
+  limit: 1
+}
+
+auth:bearer {
+  token: {{admin_access_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.items: isDefined
+}
+
+tests {
+  test("US-14: response tem items array", function() {
+    expect(res.body.items).to.be.an("array");
+  });
+
+  test("US-14: senha nunca eh exposta nos items", function() {
+    res.body.items.forEach(function(item) {
+      expect(item).to.not.have.property("password");
+      expect(item).to.not.have.property("hashed_password");
+    });
+  });
+}
+
+script:post-response {
+  if (res.status === 200 && res.body.next_cursor) {
+    bru.setVar("next_cursor", res.body.next_cursor);
+  }
+}
+
+docs {
+  Pré-requisito MANUAL: a var {{admin_access_token}} precisa estar
+  populada com um token de usuário promovido a admin. Veja o doc do
+  request `03_Auth_Access/04_Admin_Ping_Token_Admin_200.bru` para os
+  passos de promoção via DynamoDB Local.
+
+  `?limit=1` força paginação se houver pelo menos 2 users no banco —
+  o `script:post-response` salva `next_cursor` para o request 04
+  consumir. Se houver apenas 1 user, `next_cursor` virá null e o
+  request 04 vai falhar (rode 01_Happy_Path/01_Register.bru antes
+  para garantir 2+ users).
+}
