@@ -6,7 +6,7 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
-from mypy_boto3_dynamodb.service_resource import DynamoDBServiceResource, Table
+from mypy_boto3_dynamodb.service_resource import Table
 
 from app.domain.user import Email, HashedPassword, User, Username
 from app.ports.user_repository import UserRepository
@@ -20,7 +20,7 @@ class DynamoUserRepository(UserRepository):
         auto_create: bool = False,
     ) -> None:
         endpoint_url = endpoint_url or os.getenv("DYNAMODB_ENDPOINT_URL")
-        self._client: DynamoDBServiceResource = boto3.resource(
+        self._client = boto3.resource(
             "dynamodb", endpoint_url=endpoint_url, region_name="us-east-1"
         )
         if auto_create:
