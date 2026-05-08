@@ -1,5 +1,6 @@
 """Fixtures globais compartilhadas entre os testes."""
 
+import uuid
 from collections.abc import Iterator
 from typing import Any
 
@@ -8,9 +9,17 @@ import pytest
 from moto import mock_aws
 
 from app.adapters.dynamo_user_repository import DynamoUserRepository
+from app.domain.access_level import AccessLevel
 from app.domain.user import Email, HashedPassword, User, Username
 from app.ports.user_repository import UserRepository
+from tests.fakes.access_level_repository import FakeAccessLevelRepository
 from tests.fakes.user_repository import FakeUserRepository
+
+# UUIDs determinísticos espelhando o seed do Terraform
+# (uuidv5(NAMESPACE_DNS, "admin"|"user")). Mantidos aqui para que stubs
+# reproduzam o catálogo real sem depender do banco.
+ADMIN_UUID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "admin"))
+USER_UUID = str(uuid.uuid5(uuid.NAMESPACE_DNS, "user"))
 
 
 @pytest.fixture
@@ -32,6 +41,17 @@ def valid_user(valid_user_kwargs: dict[str, Any]) -> User:
 @pytest.fixture
 def fake_repo() -> FakeUserRepository:
     return FakeUserRepository()
+
+
+@pytest.fixture
+def fake_access_level_repo() -> FakeAccessLevelRepository:
+    """Catalogo padrao com admin e user, espelhando o seed do Terraform."""
+    return FakeAccessLevelRepository(
+        levels=[
+            AccessLevel(id=ADMIN_UUID, title="admin"),
+            AccessLevel(id=USER_UUID, title="user"),
+        ]
+    )
 
 
 @pytest.fixture

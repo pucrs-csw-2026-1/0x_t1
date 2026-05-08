@@ -26,6 +26,7 @@ from moto import mock_aws
 from app.adapters.api import dependencies as deps_module
 from app.adapters.api.auth_router import router as auth_router
 from app.adapters.api.user_router import router as user_router
+from tests.conftest import ADMIN_UUID, USER_UUID
 
 VALID_PAYLOAD = {
     "first_name": "Maria",
@@ -33,13 +34,15 @@ VALID_PAYLOAD = {
     "username": "maria.silva",
     "email": "maria@example.com",
     "password": "Senha@123",
-    "access_level": ["user"],
 }
 
 
-def _create_table() -> None:
-    """Cria a tabela 'user' no DynamoDB mockado, espelhando o schema do TF."""
-    boto3.resource("dynamodb", region_name="us-east-1").create_table(
+def _create_tables() -> None:
+    """Cria 'user' e 'access_level' (seedada) no DynamoDB mockado, espelhando
+    o schema/seed do Terraform."""
+    ddb = boto3.resource("dynamodb", region_name="us-east-1")
+
+    ddb.create_table(
         TableName="user",
         KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
         AttributeDefinitions=[
@@ -62,6 +65,15 @@ def _create_table() -> None:
         BillingMode="PAY_PER_REQUEST",
     )
 
+    access_table = ddb.create_table(
+        TableName="access_level",
+        KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+        BillingMode="PAY_PER_REQUEST",
+    )
+    access_table.put_item(Item={"id": ADMIN_UUID, "title": "admin"})
+    access_table.put_item(Item={"id": USER_UUID, "title": "user"})
+
 
 @pytest.fixture
 def system_app() -> Iterator[FastAPI]:
@@ -72,7 +84,7 @@ def system_app() -> Iterator[FastAPI]:
     PR #57). Sem o reset, um teste contamina o seguinte.
     """
     with mock_aws():
-        _create_table()
+        _create_tables()
         deps_module._refresh_token_repository._revoked.clear()
 
         app = FastAPI()
@@ -259,8 +271,23 @@ class TestProtectedEndpointsAuth:
 
     def test_refresh_preserva_scopes_apos_login(self, client: TestClient) -> None:
         """CT-SYS-12: scopes do user devem sobreviver ao /auth/refresh
-        (regressão direta do PR #58 — antes saíam vazios)."""
-        _register(client, access_level=["user", "admin"])
+        (regressão direta do PR #58 — antes saíam vazios). Com a US-13
+        a promoção é feita direto no banco, já que o register público
+        ignora access_level do payload (segurança contra auto-promoção)."""
+        register_resp = _register(client)
+        assert register_resp["status"] == 201
+        body = register_resp["body"]
+        assert isinstance(body, dict)
+        user_id = body["id"]
+
+        # Promove o usuário no banco para [user, admin] — simula uma
+        # operação administrativa (US-18 cobrirá esse fluxo).
+        boto3.resource("dynamodb", region_name="us-east-1").Table("user").update_item(
+            Key={"id": user_id},
+            UpdateExpression="SET access_level = :a",
+            ExpressionAttributeValues={":a": [USER_UUID, ADMIN_UUID]},
+        )
+
         login = _login(client)
         assert login["status"] == 200
         login_body = login["body"]
