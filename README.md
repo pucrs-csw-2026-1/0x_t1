@@ -105,7 +105,7 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 |---|---|---|
 | **Repository** | `ports/user_repository.py` -> `adapters/dynamo_user_repository.py` | ABC define `save`, `find_by_email`, `find_by_id`. O adapter implementa via boto3/DynamoDB. Os use cases usam a interface, sem saber que o banco e DynamoDB |
 | **Strategy** | `ports/password_hasher.py` -> `adapters/bcrypt_password_hasher.py` | ABC define `hash` e `verify`. O adapter implementa com bcrypt. Pode ser trocado por argon2 sem alterar use cases. Mesmo principio para `TokenProvider` (JWT hoje, pode ser opaco amanha) |
-| **Dependency Injection** | `adapters/api/dependencies.py` + `container.py` | FastAPI `Depends()` injeta as implementacoes concretas nos routers. O `container.py` monta as dependencias (qual adapter satisfaz qual port) |
+| **Dependency Injection** | `adapters/api/dependencies.py` | FastAPI `Depends()` injeta as implementacoes concretas nos routers. As factories em `dependencies.py` (`get_user_service`, `get_auth_service`) montam o grafo (qual adapter satisfaz qual port) |
 | **DTO (Data Transfer Object)** | `adapters/api/auth_router.py`, `user_router.py` | Schemas Pydantic (`UserCreate`, `UserResponse`, `TokenResponse`) desacoplam a entrada/saida HTTP das entidades de dominio |
 
 ---
@@ -117,17 +117,16 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                          # Ponto de entrada FastAPI
-│   │   ├── config.py                        # Settings via pydantic-settings (BaseSettings)
-│   │   ├── container.py                     # Composicao e injecao de dependencias
 │   │   │
 │   │   ├── domain/                          # Camada de Dominio (sem deps externas)
 │   │   │   ├── user.py                      # Entidade User + value objects (Email, Username, HashedPassword)
-│   │   │   └── exceptions.py               # Excecoes de dominio
+│   │   │   └── exceptions.py                # Excecoes de dominio
 │   │   │
 │   │   ├── ports/                           # Portas de saida (interfaces ABC)
 │   │   │   ├── user_repository.py           # Interface: UserRepository
 │   │   │   ├── token_provider.py            # Interface: TokenProvider
-│   │   │   └── password_hasher.py           # Interface: PasswordHasher
+│   │   │   ├── password_hasher.py           # Interface: PasswordHasher
+│   │   │   └── refresh_token_repository.py  # Interface: RefreshTokenRepository
 │   │   │
 │   │   ├── application/                     # Camada de Aplicacao (Use Cases)
 │   │   │   ├── auth_service.py              # Logica de autenticacao e tokens
@@ -137,24 +136,35 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 │   │       ├── api/                         # Driving Adapters (FastAPI)
 │   │       │   ├── auth_router.py           # Rotas OAuth2 + schemas de auth
 │   │       │   ├── user_router.py           # Rotas de usuarios + schemas
-│   │       │   └── dependencies.py          # OAuth2PasswordBearer, get_current_user
+│   │       │   └── dependencies.py          # OAuth2PasswordBearer, get_current_user, factories
+│   │       ├── config/
+│   │       │   └── settings.py              # Settings via pydantic-settings (BaseSettings)
 │   │       ├── dynamo_user_repository.py    # UserRepository -> DynamoDB (boto3)
+│   │       ├── in_memory_refresh_token_repository.py  # RefreshTokenRepository in-memory (dev)
 │   │       ├── jwt_token_provider.py        # TokenProvider -> python-jose
 │   │       └── bcrypt_password_hasher.py    # PasswordHasher -> passlib/bcrypt
 │   │
 │   ├── tests/
 │   │   ├── conftest.py                      # Fixtures globais e dubles reutilizaveis
-│   │   ├── test_auth_service.py             # Testes do use case de autenticacao
-│   │   ├── test_user_service.py             # Testes do use case de usuarios
-│   │   ├── test_domain.py                   # Testes de entidades e value objects
-│   │   ├── test_token_provider.py           # Testes de geracao/validacao JWT
-│   │   └── test_password_hasher.py          # Testes de hashing bcrypt
+│   │   ├── fakes/                           # In-memory test doubles dos ports
+│   │   ├── test_auth_service.py             # Use case de autenticacao
+│   │   ├── test_user_service.py             # Use case de usuarios
+│   │   ├── test_domain.py                   # Entidades e value objects
+│   │   ├── test_token_provider.py           # Geracao/validacao JWT
+│   │   ├── test_password_hasher.py          # Hashing bcrypt
+│   │   ├── test_user_repository.py          # Adapter DynamoDB (moto)
+│   │   ├── test_auth_router.py              # Rotas /auth/*
+│   │   ├── test_user_router.py              # Rotas /users/*
+│   │   ├── test_dependencies.py             # get_current_user, require_scope
+│   │   ├── test_route_auth_audit.py         # Auditoria de quais rotas exigem token
+│   │   └── test_system_auth_flow.py         # Fluxo ponta-a-ponta (register -> login -> me -> refresh -> logout)
 │   │
 │   ├── .env.example                         # Exemplo de variaveis de ambiente
 │   ├── pyproject.toml                       # Dependencias, mypy e Ruff
 │   ├── requirements.txt                     # Dependencias de producao
 │   └── requirements-dev.txt                 # Dependencias de desenvolvimento
 │
+├── terraform/                               # IaC (Ministack + DynamoDB)
 ├── db/                                      # Modelagem do banco de dados
 ├── .github/                                 # Workflows CI/CD
 ├── BACKLOG.md                               # Backlog de User Stories
@@ -170,7 +180,9 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 ### Pre-requisitos
 
 - Python 3.12+
-- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) configurado **ou** [DynamoDB Local](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html) para desenvolvimento
+- [Docker](https://docs.docker.com/get-docker/) e Docker Compose
+- [Terraform](https://developer.hashicorp.com/terraform/downloads) `>= 1.5`
+- (Opcional) [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) para inspecionar o DynamoDB local
 
 ### 1. Clone e entre no diretorio
 
@@ -206,13 +218,16 @@ cp .env.example .env
 ```dotenv
 # .env.example
 APP_ENV=development
-SECRET_KEY=troque-por-uma-chave-secreta-forte
+SECRET_KEY=changeme
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 REFRESH_TOKEN_EXPIRE_DAYS=7
 
 AWS_REGION=us-east-1
-DYNAMODB_ENDPOINT_URL=http://localhost:8000   # apenas para DynamoDB Local
+AWS_ENDPOINT_URL=http://localhost:4566   # Ministack (LocalStack-like)
+AWS_ACCESS_KEY_ID=test
+AWS_SECRET_ACCESS_KEY=test
+
 DYNAMODB_TABLE_USERS=user
 ```
 
@@ -228,32 +243,41 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     aws_region: str = "us-east-1"
-    dynamodb_endpoint_url: str | None = None
+    aws_endpoint_url: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
     dynamodb_table_users: str = "user"
 
     model_config = SettingsConfigDict(env_file=".env")
 ```
 
-### 5. (Opcional) Suba o DynamoDB Local via Docker
+### 5. Suba o Ministack e provisione as tabelas
+
+A stack DynamoDB roda localmente via Docker Compose (Ministack) e e provisionada por Terraform. Da raiz do projeto:
 
 ```bash
-docker run -d -p 8000:8000 amazon/dynamodb-local
+cd terraform
+docker compose up -d
+terraform init   # primeira vez ou apos mudar providers
+terraform apply
 ```
+
+Para detalhes (verificacao, encerramento, persistencia), veja [terraform/README.md](terraform/README.md).
 
 ---
 
 ## Executando a Aplicacao
 
 ```bash
-uvicorn app.main:app --reload --port 8080
+uvicorn app.main:app --reload
 ```
 
-> A porta `8000` e reservada para o DynamoDB Local. A API roda em `8080` para evitar conflito.
+> Porta padrao do uvicorn e `8000`. O Ministack roda em `4566`, sem conflito.
 
 A documentacao interativa estara disponivel em:
 
-- Swagger UI: <http://localhost:8080/docs>
-- ReDoc: <http://localhost:8080/redoc>
+- Swagger UI: <http://localhost:8000/docs>
+- ReDoc: <http://localhost:8000/redoc>
 
 ---
 

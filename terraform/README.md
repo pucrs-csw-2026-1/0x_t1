@@ -2,14 +2,14 @@
 
 ## Tecnologia
 
-O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. Para o ambiente de desenvolvimento, a stack AWS é emulada localmente com **[LocalStack](https://www.localstack.cloud/)**, executado via Docker Compose, e provisionada de forma declarativa com **[Terraform](https://www.terraform.io/)**. Como o DynamoDB não impõe regras de esquema, a validação dos dados é responsabilidade do backend em **FastAPI**.
+O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. Para o ambiente de desenvolvimento, a stack AWS é emulada localmente com **Ministack**, executado via Docker Compose, e provisionada de forma declarativa com **[Terraform](https://www.terraform.io/)**. Como o DynamoDB não impõe regras de esquema, a validação dos dados é responsabilidade do backend em **FastAPI**.
 
 ### Stack local
 
 | Componente | Função |
 | --- | --- |
-| **LocalStack** | Container que emula os serviços AWS (neste serviço, apenas DynamoDB) na porta `4566` |
-| **Terraform** | Provisiona a tabela `users` e seus índices secundários no LocalStack |
+| **Ministack** | Container que emula os serviços AWS (neste serviço, apenas DynamoDB) na porta `4566` |
+| **Terraform** | Provisiona a tabela `user` e seus índices secundários no Ministack |
 | **AWS provider** | Aponta para o endpoint local (`http://localhost:4566`) com credenciais fictícias (`test`/`test`) |
 
 ## Configuração e Instalação
@@ -26,7 +26,7 @@ git clone https://github.com/pucrs-csw-2026-1/0x_t1.git
 cd 0x_t1/terraform
 ```
 
-### 2. Suba o container do LocalStack
+### 2. Suba o container do Ministack
 
 Na pasta `terraform/`, suba o emulador AWS local:
 
@@ -34,7 +34,7 @@ Na pasta `terraform/`, suba o emulador AWS local:
 docker compose up -d
 ```
 
-O LocalStack fica exposto em `http://localhost:4566`. Para parar, use `docker compose down`.
+O Ministack fica exposto em `http://localhost:4566`. Para parar, use `docker compose down`.
 
 ### 3. Provisione a tabela com Terraform
 
@@ -45,7 +45,7 @@ terraform init
 terraform apply
 ```
 
-Isso cria a tabela `users` e seus índices secundários (`email-index`, `username-index`) dentro do LocalStack.
+Isso cria a tabela `user` e seus índices secundários (`email-index`, `username-index`) dentro do Ministack.
 
 ### 4. (Opcional) Verifique a tabela
 
@@ -59,10 +59,10 @@ aws --endpoint-url=http://localhost:4566 dynamodb list-tables
 
 ```bash
 terraform destroy   # remove os recursos provisionados
-docker compose down # encerra o container do LocalStack
+docker compose down # encerra o container do Ministack
 ```
 
-> O volume `./.localstack` guarda o estado do container entre reinicializações. Apague-o se quiser começar do zero.
+> O volume `./.ministack-data` guarda o estado do container entre reinicializações. Apague-o se quiser começar do zero.
 
 ## Modelagem do Banco de Dados
 
@@ -72,7 +72,7 @@ A modelagem foi projetada na aplicação **Hackolade**. Ela foi projetada para s
 
 ### Por que DynamoDB?
 
-A escolha do DynamoDB como banco NoSQL se dá pela simplicidade do modelo chave-valor, que atende bem aos padrões de acesso do serviço de autenticação — predominantemente consultas diretas por `id`. Combinado com **LocalStack**, é possível rodar toda a stack AWS em container, sem depender de serviços externos durante o desenvolvimento e testes.
+A escolha do DynamoDB como banco NoSQL se dá pela simplicidade do modelo chave-valor, que atende bem aos padrões de acesso do serviço de autenticação — predominantemente consultas diretas por `id`. Combinado com **Ministack**, é possível rodar toda a stack AWS em container, sem depender de serviços externos durante o desenvolvimento e testes.
 
 ### Validação dos dados
 

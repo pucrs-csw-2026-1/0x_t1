@@ -36,6 +36,7 @@ cd backend && uvicorn app.main:app --reload
 3. Rodar os requests **na ordem**:
    - `01_Happy_Path/` — fluxo encadeado, cada request usa vars setadas pelo anterior
    - `02_Errors/` — variantes de erro (alguns dependem do happy path para 409 e senha errada)
+   - `03_US13/` — autorização por escopo (gate de admin, descarte de auto-promoção)
 
 ## O que cada pasta cobre
 
@@ -68,6 +69,22 @@ Pega os ramos de erro do mapa `domain → HTTP`:
 | 06 | Login email malformado | 401 (não 400 — sem enumeração) |
 | 07 | `/users/me` sem token | 401 "Token ausente" |
 | 08 | `/auth/logout` sem token | 401 "Token ausente" — confusão típica do Swagger |
+
+### `03_US13/`
+
+Cobre os critérios da US-13 (catálogo de perfis + scopes semânticos no JWT
++ atribuição segura no cadastro).
+
+| # | Cenário | Espera |
+|---|---|---|
+| 01 | Register com `access_level: ["<UUID-admin>"]` no body | 201, mas response com `access_level=[<UUID-user>]` (descarte silencioso) |
+| 02 | `/admin/ping` sem token | 401 "Token ausente" |
+| 03 | `/admin/ping` com token de user normal | 403 "permissão insuficiente: requer 'admin'" |
+| 04 | `/admin/ping` com token admin | 200 — **manual**, requer promoção via DDB (vide doc do request) |
+
+Os UUIDs do catálogo (`admin_uuid`, `user_uuid`) ficam no environment
+`Local.bru` e são determinísticos (uuid v5 do mesmo namespace que o
+seed do Terraform).
 
 ## CLI (opcional)
 
