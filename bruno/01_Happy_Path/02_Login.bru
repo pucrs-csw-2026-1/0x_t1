@@ -15,16 +15,16 @@ body:form-urlencoded {
   password: {{password}}
 }
 
-script:post-response {
-  if (res.status === 200) {
-    bru.setVar("access_token", res.body.access_token);
-    bru.setVar("refresh_token", res.body.refresh_token);
-  }
-}
-
 assert {
   res.status: eq 200
   res.body.token_type: eq bearer
   res.body.access_token: isDefined
   res.body.refresh_token: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("access_token", res.body.access_token);
+    bru.setVar("refresh_token", res.body.refresh_token);
+  }
 }
