@@ -20,15 +20,6 @@ body:json {
   }
 }
 
-vars:pre-request {
-  baseUrl: http://127.0.0.1:8000/
-  first_name: Juca
-  last_name: Bala
-  username: juca.bala
-  email: juca@email.com
-  password: Senha@123
-}
-
 assert {
   res.status: eq 201
   res.body.email: eq {{email}}
