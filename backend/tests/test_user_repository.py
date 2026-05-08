@@ -61,3 +61,42 @@ def test_save_overwrites_existing(repo: UserRepository, valid_user: User) -> Non
     found = repo.find_by_id(valid_user.id)
     assert found is not None
     assert found.is_active is False
+
+
+def test_find_all_repo_vazio(repo: UserRepository) -> None:
+    """US-14: lista vazia retorna pagina vazia sem cursor."""
+    page = repo.find_all(limit=10)
+    assert page.items == []
+    assert page.next_cursor is None
+
+
+def test_find_all_paginates(repo: UserRepository) -> None:
+    """US-14: 5 users paginados de 2 em 2 retornam todos exatamente uma vez.
+
+    Testa a propriedade de paginacao sem assumir ordem especifica
+    (Dynamo Scan nao garante ordem; o teste so exige cobertura completa
+    sem repeticao). Cobre fake e dynamo (parametrizado pela fixture repo).
+    """
+    ids_criados: list[str] = []
+    for i in range(1, 6):
+        u = User(
+            id=f"user-{i:04d}",
+            username=Username(f"user.{i:04d}"),
+            email=Email(f"u{i}@example.com"),
+            hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+            first_name="Test",
+            last_name=f"User{i}",
+        )
+        repo.save(u)
+        ids_criados.append(u.id)
+
+    coletados: list[str] = []
+    cursor: str | None = None
+    while True:
+        page = repo.find_all(limit=2, cursor=cursor)
+        coletados.extend(u.id for u in page.items)
+        if page.next_cursor is None:
+            break
+        cursor = page.next_cursor
+
+    assert sorted(coletados) == sorted(ids_criados)
