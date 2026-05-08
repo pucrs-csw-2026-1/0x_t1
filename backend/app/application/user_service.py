@@ -2,6 +2,7 @@ from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.domain.exceptions import (
     AccessLevelNotFoundError,
     EmailAlreadyExistsError,
+    InvalidPaginationError,
     UserNotFoundError,
 )
 from app.domain.user import (
@@ -13,7 +14,7 @@ from app.domain.user import (
 )
 from app.ports.access_level_repository import AccessLevelRepository
 from app.ports.password_hasher import PasswordHasher
-from app.ports.user_repository import UserRepository
+from app.ports.user_repository import UserPage, UserRepository
 
 
 class UserService:
@@ -37,6 +38,17 @@ class UserService:
         if user is None:
             raise UserNotFoundError(user_id)
         return user
+
+    def list_users(self, limit: int = 20, cursor: str | None = None) -> UserPage:
+        """Lista usuários paginadamente.
+
+        Raises:
+            InvalidPaginationError: se cursor for fornecido e não corresponder
+            a um usuário existente;
+        """
+        if cursor is not None and self._user_repo.find_by_id(cursor) is None:
+            raise InvalidPaginationError(f"Cursor inválido: {cursor}")
+        return self._user_repo.find_all(limit=limit, cursor=cursor)
 
     def register(
         self,
