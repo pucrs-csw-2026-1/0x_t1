@@ -1,7 +1,6 @@
-from typing import Iterable
-
 from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.domain.exceptions import (
+    AccessLevelNotFoundError,
     EmailAlreadyExistsError,
     UserNotFoundError,
 )
@@ -12,6 +11,7 @@ from app.domain.user import (
     Username,
     validate_raw_password,
 )
+from app.ports.access_level_repository import AccessLevelRepository
 from app.ports.password_hasher import PasswordHasher
 from app.ports.user_repository import UserRepository
 
@@ -20,10 +20,12 @@ class UserService:
     def __init__(
         self,
         user_repo: UserRepository,
+        access_level_repo: AccessLevelRepository,
         password_hasher: PasswordHasher | None = None,
     ) -> None:
         self._user_repo = user_repo
         self._hasher: PasswordHasher = password_hasher or BcryptPasswordHasher()
+        self._access_level_repo = access_level_repo
 
     def get_user_by_id(self, user_id: str) -> User:
         """Busca e retorna o usuário pelo ID.
@@ -43,12 +45,12 @@ class UserService:
         username: str,
         email: str,
         password: str,
-        access_level: Iterable[str] | None = None,
     ) -> User:
         """Registra um novo usuário validando dados, hasheando a senha e persistindo.
 
         Raises:
             EmailAlreadyExistsError: se já existir usuário com o mesmo e-mail.
+            AccessLevelNotFoundError: se o nível de acesso não for encontrado.
             InvalidEmailError, WeakPasswordError, InvalidUsernameError:
                 propagadas do domínio.
         """
@@ -68,6 +70,11 @@ class UserService:
         hashed = self._hasher.hash(password)
         hashed_vo = HashedPassword(hashed)
 
+        # Busca IDs de níveis de acesso
+        level = self._access_level_repo.find_by_title("user")
+        if not level:
+            raise AccessLevelNotFoundError("user")
+
         # Cria entidade e persiste
         user = User(
             username=username_vo,
@@ -75,7 +82,7 @@ class UserService:
             hashed_password=hashed_vo,
             first_name=first_name,
             last_name=last_name,
-            access_level=list(access_level or []),
+            access_level=[level.id],
         )
 
         saved = self._user_repo.save(user)

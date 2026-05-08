@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.adapters.api.dependencies import get_current_user, get_user_service
 from app.application.user_service import UserService
@@ -16,7 +16,7 @@ from app.domain.exceptions import (
 )
 from app.domain.user import User
 
-router = APIRouter(prefix="/users")
+router = APIRouter(prefix="/users", tags=["users"])
 
 
 class UserResponse(BaseModel):
@@ -36,7 +36,11 @@ class UserCreate(BaseModel):
     username: str
     email: str
     password: str
-    access_level: list[str] | None = None
+    access_level: list[str] | None = Field(
+        default=None,
+        deprecated=True,
+        description="Ignorado. Cadastro público sempre cria perfil 'user'.",
+    )
 
 
 def _to_response(user: User) -> UserResponse:
@@ -102,7 +106,6 @@ def register_user(
             username=payload.username,
             email=payload.email,
             password=payload.password,
-            access_level=payload.access_level,
         )
     except EmailAlreadyExistsError as exc:
         raise HTTPException(
