@@ -8,7 +8,6 @@ from app.adapters.api.dependencies import get_current_user, get_user_service
 from app.application.user_service import UserService
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
-    InvalidCredentialsError,
     InvalidEmailError,
     InvalidNameError,
     InvalidUsernameError,
@@ -42,11 +41,6 @@ class UserCreate(BaseModel):
         deprecated=True,
         description="Ignorado. Cadastro público sempre cria perfil 'user'.",
     )
-
-
-class UserDeactivate(BaseModel):
-    username: str
-    password: str
 
 
 def to_user_response(user: User) -> UserResponse:
@@ -136,28 +130,27 @@ def register_user(
     status_code=204,
     responses={
         204: {"description": "Conta desativada com sucesso."},
-        401: {"description": "Credenciais inválidas."},
+        401: {"description": "Token ausente, inválido ou expirado."},
     },
     description=(
-        "Desativa a conta do usuário via username e senha (soft delete).\n\n"
-        "Revoga todos os refresh tokens ativos do usuário e preserva o histórico."
+        "Desativa a conta do usuário autenticado (soft delete).\n\n"
+        "Requer `Authorization: Bearer <access_token>` no header. "
+        "Para testar via Swagger UI, clique em **Authorize** (cadeado) "
+        "antes de executar."
     ),
 )
 def deactivate_me(
-    payload: UserDeactivate,
+    user_id: Annotated[str, Depends(get_current_user)],
     user_service: Annotated[UserService, Depends(get_user_service)],
 ) -> None:
-    """Desativa a conta do usuário com username e senha (soft delete).
+    """Desativa a conta do usuário autenticado (soft delete).
 
     Marca is_active=False, revoga todos os refresh tokens ativos e preserva o histórico.
     """
     try:
-        user_service.deactivate_with_credentials(
-            username=payload.username,
-            password=payload.password,
-        )
-    except InvalidCredentialsError as exc:
+        user_service.deactivate(user_id)
+    except UserNotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         ) from exc

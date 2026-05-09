@@ -2,9 +2,7 @@ from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.domain.exceptions import (
     AccessLevelNotFoundError,
     EmailAlreadyExistsError,
-    InvalidCredentialsError,
     InvalidPaginationError,
-    InvalidUsernameError,
     UserNotFoundError,
 )
 from app.domain.user import (
@@ -127,27 +125,3 @@ class UserService:
         # Persiste a alteração
         saved = self._user_repo.save(user)
         return saved
-
-    def deactivate_with_credentials(self, username: str, password: str) -> User:
-        """Desativa a conta validando username e senha.
-
-        Usa a mesma semântica de segurança do login: retorna erro genérico
-        para não expor se o usuário existe.
-
-        Raises:
-            InvalidCredentialsError: username inválido/malformado, inexistente
-                ou senha incorreta.
-        """
-        try:
-            username_vo = Username(username)
-        except InvalidUsernameError as exc:
-            raise InvalidCredentialsError() from exc
-
-        user = self._user_repo.find_by_username(username_vo)
-        if user is None:
-            raise InvalidCredentialsError()
-
-        if not self._hasher.verify(password, user.hashed_password.value):
-            raise InvalidCredentialsError()
-
-        return self.deactivate(user.id)

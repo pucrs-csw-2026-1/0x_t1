@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import create_autospec
 
 import pytest
 from fastapi import FastAPI
@@ -19,7 +19,6 @@ from app.application.user_service import UserService
 from app.domain.access_level import AccessLevel
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
-    InvalidCredentialsError,
     InvalidEmailError,
     InvalidUsernameError,
     UserNotFoundError,
@@ -495,114 +494,97 @@ class TestUserRouterDeactivate:
         self,
         app: FastAPI,
         client: TestClient,
+        valid_user: User,
     ) -> None:
-        """CT-01: DELETE /users/me com credenciais válidas retorna 204."""
+        """CT-01: DELETE /users/me com token válido retorna 204 e desativa a conta."""
         user_service_mock = create_autospec(UserService, instance=True)
-        user_service_mock.deactivate_with_credentials.return_value = MagicMock()
+        deactivated_user = valid_user
+        deactivated_user.deactivate()
+        user_service_mock.deactivate.return_value = deactivated_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
         app.dependency_overrides[get_user_service] = lambda: user_service_mock
 
-        response = client.request(
-            method="DELETE",
-            url="/users/me",
-            json={
-                "username": "maria.silva",
-                "password": "Senha@123",
-            },
-        )
+        response = client.delete("/users/me")
 
         app.dependency_overrides.clear()
 
         assert response.status_code == 204
         assert response.text == ""
-        user_service_mock.deactivate_with_credentials.assert_called_once_with(
-            username="maria.silva",
-            password="Senha@123",
-        )
+        user_service_mock.deactivate.assert_called_once_with(valid_user.id)
 
-    def test_delete_me_sem_body_retorna_422(
+    def test_delete_me_sem_token_retorna_401(
         self,
         client: TestClient,
     ) -> None:
-        """CT-02: DELETE /users/me sem body obrigatório retorna 422."""
+        """CT-02: DELETE /users/me sem token retorna 401."""
         response = client.delete("/users/me")
 
-        assert response.status_code == 422
+        assert response.status_code == 401
 
-    def test_delete_me_credenciais_invalidas_retorna_401(
+    def test_delete_me_usuario_inexistente_retorna_404(
         self,
         app: FastAPI,
         client: TestClient,
     ) -> None:
-        """CT-03: Credenciais inválidas retornam 401."""
+        """CT-03: DELETE /users/me com user_id válido no token mas usuário
+        inexistente retorna 404."""
         user_service_mock = create_autospec(UserService, instance=True)
-        user_service_mock.deactivate_with_credentials.side_effect = (
-            InvalidCredentialsError()
-        )
+        user_service_mock.deactivate.side_effect = UserNotFoundError("user-deletado")
+
+        app.dependency_overrides[get_current_user] = lambda: "user-deletado"
         app.dependency_overrides[get_user_service] = lambda: user_service_mock
 
-        response = client.request(
-            method="DELETE",
-            url="/users/me",
-            json={
-                "username": "maria.silva",
-                "password": "SenhaErrada@123",
-            },
-        )
+        response = client.delete("/users/me")
 
         app.dependency_overrides.clear()
 
-        assert response.status_code == 401
-        assert response.json()["detail"] == "Credenciais inválidas."
+        assert response.status_code == 404
 
     def test_delete_me_idempotente_segunda_chamada_retorna_204(
         self,
         app: FastAPI,
         client: TestClient,
+        valid_user: User,
     ) -> None:
         """CT-04: Chamar DELETE /users/me duas vezes retorna 204 ambas
         (idempotente — desativar um usuário já inativo não falha)."""
         user_service_mock = create_autospec(UserService, instance=True)
-        user_service_mock.deactivate_with_credentials.return_value = MagicMock()
+        deactivated_user = valid_user
+        deactivated_user.deactivate()
+        user_service_mock.deactivate.return_value = deactivated_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
         app.dependency_overrides[get_user_service] = lambda: user_service_mock
 
         # Primeira chamada
-        response1 = client.request(
-            method="DELETE",
-            url="/users/me",
-            json={"username": "maria.silva", "password": "Senha@123"},
-        )
+        response1 = client.delete("/users/me")
         # Segunda chamada
-        response2 = client.request(
-            method="DELETE",
-            url="/users/me",
-            json={"username": "maria.silva", "password": "Senha@123"},
-        )
+        response2 = client.delete("/users/me")
 
         app.dependency_overrides.clear()
 
         assert response1.status_code == 204
         assert response2.status_code == 204
-        assert user_service_mock.deactivate_with_credentials.call_count == 2
+        assert user_service_mock.deactivate.call_count == 2
 
     def test_delete_me_retorna_mesmo_204_se_ja_inativo(
         self,
         app: FastAPI,
         client: TestClient,
+        valid_user: User,
     ) -> None:
         """CT-05: DELETE /users/me em usuário já inativo retorna 204
         (sem diferenciação de estado)."""
         user_service_mock = create_autospec(UserService, instance=True)
-        user_service_mock.deactivate_with_credentials.return_value = MagicMock()
+        already_inactive = valid_user
+        already_inactive.deactivate()
+        user_service_mock.deactivate.return_value = already_inactive
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
         app.dependency_overrides[get_user_service] = lambda: user_service_mock
 
-        response = client.request(
-            method="DELETE",
-            url="/users/me",
-            json={
-                "username": "maria.silva",
-                "password": "Senha@123",
-            },
-        )
+        response = client.delete("/users/me")
 
         app.dependency_overrides.clear()
 
