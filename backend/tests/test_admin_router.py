@@ -19,6 +19,7 @@ from app.adapters.config.settings import settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.user_service import UserService
 from app.domain.user import Email, HashedPassword, User, Username
+from tests.conftest import ADMIN_UUID, USER_UUID
 from tests.fakes.access_level_repository import FakeAccessLevelRepository
 from tests.fakes.user_repository import FakeUserRepository
 
@@ -304,3 +305,368 @@ class TestAdminListUsers:
         for item in response.json()["items"]:
             assert "password" not in item
             assert "hashed_password" not in item
+
+
+class TestAdminGetUser:
+    """Testes do endpoint GET /admin/users/{user_id} (US-18)."""
+
+    ADMIN_ID = "admin-001"
+    TARGET_ID = "target-001"
+
+    @pytest.fixture
+    def target_user(self) -> User:
+        return User(
+            id=self.TARGET_ID,
+            username=Username("target.user"),
+            email=Email("target@example.com"),
+            hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+            first_name="Target",
+            last_name="User",
+        )
+
+    @pytest.fixture
+    def admin_app(
+        self,
+        app: FastAPI,
+        target_user: User,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> Iterator[FastAPI]:
+        repo = FakeUserRepository()
+        repo.save(target_user)
+        service = UserService(user_repo=repo, access_level_repo=fake_access_level_repo)
+        app.dependency_overrides[get_user_service] = lambda: service
+        yield app
+        app.dependency_overrides.clear()
+
+    @pytest.fixture
+    def admin_client(self, admin_app: FastAPI) -> TestClient:
+        return TestClient(admin_app)
+
+    # CT-18.G01: token admin + id existente → 200 com dados do usuário
+    def test_get_user_admin_retorna_200(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+        target_user: User,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
+
+        response = admin_client.get(
+            f"/admin/users/{self.TARGET_ID}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == target_user.id
+        assert data["email"] == target_user.email.value
+        assert "password" not in data
+        assert "hashed_password" not in data
+
+    # CT-18.G02: token user (sem admin) → 403
+    def test_get_user_com_token_user_retorna_403(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["user"])
+
+        response = admin_client.get(
+            f"/admin/users/{self.TARGET_ID}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 403
+
+    # CT-18.G03: sem token → 401
+    def test_get_user_sem_token_retorna_401(
+        self,
+        admin_client: TestClient,
+    ) -> None:
+        response = admin_client.get(f"/admin/users/{self.TARGET_ID}")
+
+        assert response.status_code == 401
+
+    # CT-18.G04: id inexistente → 404
+    def test_get_user_id_inexistente_retorna_404(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
+
+        response = admin_client.get(
+            "/admin/users/id-que-nao-existe",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 404
+
+
+class TestAdminUpdateUser:
+    """Testes do endpoint PATCH /admin/users/{user_id} (US-18)."""
+
+    ADMIN_ID = "admin-001"
+    TARGET_ID = "target-001"
+
+    @pytest.fixture
+    def target_user(self) -> User:
+        return User(
+            id=self.TARGET_ID,
+            username=Username("target.user"),
+            email=Email("target@example.com"),
+            hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+            first_name="Target",
+            last_name="User",
+            access_level=[USER_UUID],
+        )
+
+    @pytest.fixture
+    def admin_app(
+        self,
+        app: FastAPI,
+        target_user: User,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> Iterator[FastAPI]:
+        repo = FakeUserRepository()
+        repo.save(target_user)
+        service = UserService(user_repo=repo, access_level_repo=fake_access_level_repo)
+        app.dependency_overrides[get_user_service] = lambda: service
+        yield app
+        app.dependency_overrides.clear()
+
+    @pytest.fixture
+    def admin_client(self, admin_app: FastAPI) -> TestClient:
+        return TestClient(admin_app)
+
+    # CT-18.U01: alterar is_active para False → 200 com is_active=false
+    def test_patch_user_is_active_false_retorna_200(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
+
+        response = admin_client.patch(
+            f"/admin/users/{self.TARGET_ID}",
+            json={"is_active": False},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["is_active"] is False
+
+    # CT-18.U02: alterar access_level com UUID válido → 200
+    def test_patch_user_access_level_valido_retorna_200(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
+
+        response = admin_client.patch(
+            f"/admin/users/{self.TARGET_ID}",
+            json={"access_level": [ADMIN_UUID]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 200
+        assert ADMIN_UUID in response.json()["access_level"]
+
+    # CT-18.U03: access_level com UUID inválido → 422
+    def test_patch_user_access_level_invalido_retorna_422(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
+
+        response = admin_client.patch(
+            f"/admin/users/{self.TARGET_ID}",
+            json={"access_level": ["uuid-que-nao-existe"]},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 422
+
+    # CT-18.U04: admin tentando alterar a si mesmo → 400
+    def test_patch_admin_alterar_si_mesmo_retorna_400(
+        self,
+        app: FastAPI,
+        token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        admin_user = User(
+            id=self.ADMIN_ID,
+            username=Username("admin.user1"),
+            email=Email("admin@example.com"),
+            hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+            first_name="Admin",
+            last_name="User",
+            access_level=[ADMIN_UUID],
+        )
+        repo = FakeUserRepository()
+        repo.save(admin_user)
+        service = UserService(user_repo=repo, access_level_repo=fake_access_level_repo)
+        app.dependency_overrides[get_user_service] = lambda: service
+
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
+
+        response = TestClient(app).patch(
+            f"/admin/users/{self.ADMIN_ID}",
+            json={"is_active": False},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 400
+
+    # CT-18.U05: sem token → 401
+    def test_patch_user_sem_token_retorna_401(
+        self,
+        admin_client: TestClient,
+    ) -> None:
+        response = admin_client.patch(
+            f"/admin/users/{self.TARGET_ID}", json={"is_active": True}
+        )
+
+        assert response.status_code == 401
+
+    # CT-18.U06: token user (sem admin) → 403
+    def test_patch_user_com_token_user_retorna_403(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["user"])
+
+        response = admin_client.patch(
+            f"/admin/users/{self.TARGET_ID}",
+            json={"is_active": True},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 403
+
+    # CT-18.U07: id inexistente → 404
+    def test_patch_user_id_inexistente_retorna_404(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
+
+        response = admin_client.patch(
+            "/admin/users/id-que-nao-existe",
+            json={"is_active": True},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 404
+
+
+class TestAdminDeleteUser:
+    """Testes do endpoint DELETE /admin/users/{user_id} (US-18)."""
+
+    ADMIN_ID = "admin-001"
+    TARGET_ID = "target-001"
+
+    @pytest.fixture
+    def target_user(self) -> User:
+        return User(
+            id=self.TARGET_ID,
+            username=Username("target.user"),
+            email=Email("target@example.com"),
+            hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+            first_name="Target",
+            last_name="User",
+        )
+
+    @pytest.fixture
+    def admin_app(
+        self,
+        app: FastAPI,
+        target_user: User,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> Iterator[FastAPI]:
+        repo = FakeUserRepository()
+        repo.save(target_user)
+        service = UserService(user_repo=repo, access_level_repo=fake_access_level_repo)
+        app.dependency_overrides[get_user_service] = lambda: service
+        yield app
+        app.dependency_overrides.clear()
+
+    @pytest.fixture
+    def admin_client(self, admin_app: FastAPI) -> TestClient:
+        return TestClient(admin_app)
+
+    # CT-18.D01: token admin + id existente → 204
+    def test_delete_user_admin_retorna_204(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
+
+        response = admin_client.delete(
+            f"/admin/users/{self.TARGET_ID}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 204
+        assert response.text == ""
+
+    # CT-18.D02: admin tenta desativar a si mesmo → 400
+    def test_delete_admin_desativar_si_mesmo_retorna_400(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
+
+        response = admin_client.delete(
+            f"/admin/users/{self.ADMIN_ID}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 400
+
+    # CT-18.D03: sem token → 401
+    def test_delete_user_sem_token_retorna_401(
+        self,
+        admin_client: TestClient,
+    ) -> None:
+        response = admin_client.delete(f"/admin/users/{self.TARGET_ID}")
+
+        assert response.status_code == 401
+
+    # CT-18.D04: token user (sem admin) → 403
+    def test_delete_user_com_token_user_retorna_403(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["user"])
+
+        response = admin_client.delete(
+            f"/admin/users/{self.TARGET_ID}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 403
+
+    # CT-18.D05: id inexistente → 404
+    def test_delete_user_id_inexistente_retorna_404(
+        self,
+        admin_client: TestClient,
+        token_provider: JwtTokenProvider,
+    ) -> None:
+        token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
+
+        response = admin_client.delete(
+            "/admin/users/id-que-nao-existe",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 404
