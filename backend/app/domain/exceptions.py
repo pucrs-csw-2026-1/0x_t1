@@ -55,6 +55,13 @@ class InvalidCredentialsError(DomainError):
         super().__init__("Credenciais inválidas.")
 
 
+class SamePasswordError(DomainError):
+    """Exceção para nova senha igual à senha atual."""
+
+    def __init__(self) -> None:
+        super().__init__("A nova senha não pode ser igual à senha atual.")
+
+
 class InvalidTokenError(DomainError):
     """Exceção para token inválido."""
 

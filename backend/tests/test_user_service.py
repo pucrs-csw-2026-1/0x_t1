@@ -12,10 +12,12 @@ from app.domain.access_level import AccessLevel
 from app.domain.exceptions import (
     AccessLevelNotFoundError,
     EmailAlreadyExistsError,
+    InvalidCredentialsError,
     InvalidEmailError,
     InvalidNameError,
     InvalidPaginationError,
     InvalidUsernameError,
+    SamePasswordError,
     UsernameAlreadyExistsError,
     UserNotFoundError,
     WeakPasswordError,
@@ -788,3 +790,167 @@ class TestUserServiceUpdateProfile:
         fetched = fake_repo.find_by_id(saved_user.id)
         assert fetched is not None
         assert fetched.first_name == "Persistida"
+
+
+class TestUserServiceChangePassword:
+    """Testes de UserService.change_password (US-16)."""
+
+    CURRENT_HASH = "$2b$12$currenthash"
+    CURRENT_PLAIN = "S3nh@Atual!"
+    NEW_PLAIN = "N0v@Senha!"
+    NEW_HASH = "$2b$12$newhash"
+
+    def _make_spy(self, verify_returns: list[bool]) -> PasswordHasher:
+        spy: PasswordHasher = MagicMock(spec=PasswordHasher)
+        spy.verify.side_effect = verify_returns
+        spy.hash.return_value = self.NEW_HASH
+        return spy
+
+    def _make_service(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        spy: PasswordHasher,
+    ) -> UserService:
+        return UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+            password_hasher=spy,
+        )
+
+    def _saved_user(self, fake_repo: FakeUserRepository) -> User:
+        user = User(
+            username=Username("maria.silva"),
+            email=Email("maria@example.com"),
+            hashed_password=HashedPassword(self.CURRENT_HASH),
+            first_name="Maria",
+            last_name="Silva",
+        )
+        return fake_repo.save(user)
+
+    # CT-16.1 (CA-01): senha atual correta + nova válida → sucesso
+    def test_senha_atual_correta_e_nova_valida_retorna_usuario(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        spy = self._make_spy([True, False])
+        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        user = self._saved_user(fake_repo)
+
+        result = service.change_password(user.id, self.CURRENT_PLAIN, self.NEW_PLAIN)
+
+        assert result.hashed_password.value == self.NEW_HASH
+
+    # CT-16.2: spy — hash chamado exatamente 1 vez com a nova senha
+    def test_hash_chamado_exatamente_uma_vez(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        spy = self._make_spy([True, False])
+        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        user = self._saved_user(fake_repo)
+
+        service.change_password(user.id, self.CURRENT_PLAIN, self.NEW_PLAIN)
+
+        spy.hash.assert_called_once_with(self.NEW_PLAIN)
+
+    # CT-16.3 (CA-02): updated_at é atualizado após troca
+    def test_updated_at_e_atualizado(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        spy = self._make_spy([True, False])
+        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        user = self._saved_user(fake_repo)
+        original_updated_at = user.updated_at
+
+        result = service.change_password(user.id, self.CURRENT_PLAIN, self.NEW_PLAIN)
+
+        assert result.updated_at > original_updated_at
+
+    # CT-16.4 (CA-03): senha atual incorreta → InvalidCredentialsError
+    def test_senha_atual_incorreta_lanca_excecao(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        spy = self._make_spy([False])
+        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        user = self._saved_user(fake_repo)
+
+        with pytest.raises(InvalidCredentialsError):
+            service.change_password(user.id, "senha-errada", self.NEW_PLAIN)
+
+    # CT-16.5 (CA-04): nova senha igual à atual → SamePasswordError
+    def test_nova_senha_igual_a_atual_lanca_excecao(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        spy = self._make_spy([True, True])
+        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        user = self._saved_user(fake_repo)
+
+        with pytest.raises(SamePasswordError):
+            service.change_password(user.id, self.CURRENT_PLAIN, self.CURRENT_PLAIN)
+
+    # CT-16.6 (CA-05): nova senha fraca → WeakPasswordError
+    def test_nova_senha_fraca_lanca_excecao(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        spy = self._make_spy([True, False])
+        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        user = self._saved_user(fake_repo)
+
+        with pytest.raises(WeakPasswordError):
+            service.change_password(user.id, self.CURRENT_PLAIN, "fraca")
+
+    # CT-16.7: usuário não encontrado → UserNotFoundError
+    def test_usuario_inexistente_lanca_excecao(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        spy = self._make_spy([True, False])
+        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+
+        with pytest.raises(UserNotFoundError):
+            service.change_password(
+                "id-inexistente", self.CURRENT_PLAIN, self.NEW_PLAIN
+            )
+
+    # CT-16.8: hash não é chamado se senha atual for incorreta
+    def test_hash_nao_chamado_se_senha_atual_incorreta(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        spy = self._make_spy([False])
+        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        user = self._saved_user(fake_repo)
+
+        with pytest.raises(InvalidCredentialsError):
+            service.change_password(user.id, "errada", self.NEW_PLAIN)
+
+        spy.hash.assert_not_called()
+
+    # CT-16.9: troca persiste nova senha no repositório
+    def test_nova_senha_persiste_no_repositorio(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        spy = self._make_spy([True, False])
+        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        user = self._saved_user(fake_repo)
+
+        service.change_password(user.id, self.CURRENT_PLAIN, self.NEW_PLAIN)
+
+        fetched = fake_repo.find_by_id(user.id)
+        assert fetched is not None
+        assert fetched.hashed_password.value == self.NEW_HASH
