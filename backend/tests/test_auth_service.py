@@ -490,6 +490,7 @@ class TestAuthServiceInactiveUser:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
         valid_user: User,
     ) -> None:
         """CT-01: Login de usuário inativo retorna InvalidCredentialsError
@@ -501,6 +502,7 @@ class TestAuthServiceInactiveUser:
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
         )
         user_repository_mock.find_by_email.return_value = valid_user
         password_hasher_mock.verify.return_value = True
@@ -521,6 +523,7 @@ class TestAuthServiceInactiveUser:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
         valid_user: User,
     ) -> None:
         """CT-02: Login com usuário inativo retorna a mesma mensagem de erro
@@ -530,6 +533,7 @@ class TestAuthServiceInactiveUser:
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
         )
 
         # Cenário 1: usuário inativo
@@ -558,6 +562,7 @@ class TestAuthServiceInactiveUser:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
         valid_user: User,
     ) -> None:
         """CT-03: Se usuário está inativo, rejeita antes de verificar senha
@@ -567,6 +572,7 @@ class TestAuthServiceInactiveUser:
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
         )
         user_repository_mock.find_by_email.return_value = valid_user
         password_hasher_mock.verify.return_value = False  # Senha errada
@@ -582,6 +588,7 @@ class TestAuthServiceInactiveUser:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
         valid_user: User,
     ) -> None:
         """CT-04: Após reativação, login com senha correta funciona novamente
@@ -594,6 +601,7 @@ class TestAuthServiceInactiveUser:
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
         )
         user_repository_mock.find_by_email.return_value = valid_user
         password_hasher_mock.verify.return_value = True

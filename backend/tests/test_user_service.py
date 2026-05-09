@@ -252,10 +252,16 @@ class TestUserServiceDeactivate:
 
     # CT-01: Desativação bem-sucedida marca is_active=False
     def test_deactivate_marks_inactive(
-        self, fake_repo: FakeUserRepository, valid_user: User
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
     ) -> None:
         fake_repo.save(valid_user)
-        service = UserService(user_repo=fake_repo)
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
 
         deactivated = service.deactivate(valid_user.id)
 
@@ -267,11 +273,17 @@ class TestUserServiceDeactivate:
 
     # CT-02: Desativação atualiza updated_at
     def test_deactivate_updates_updated_at(
-        self, fake_repo: FakeUserRepository, valid_user: User
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
     ) -> None:
         original_updated_at = valid_user.updated_at
         fake_repo.save(valid_user)
-        service = UserService(user_repo=fake_repo)
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
 
         deactivated = service.deactivate(valid_user.id)
 
@@ -279,10 +291,16 @@ class TestUserServiceDeactivate:
 
     # CT-03: Registro físico é preservado (soft delete)
     def test_deactivate_preserves_record(
-        self, fake_repo: FakeUserRepository, valid_user: User
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
     ) -> None:
         fake_repo.save(valid_user)
-        service = UserService(user_repo=fake_repo)
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
 
         service.deactivate(valid_user.id)
 
@@ -295,10 +313,16 @@ class TestUserServiceDeactivate:
 
     # CT-04: Idempotência - chamar duas vezes não falha
     def test_deactivate_is_idempotent(
-        self, fake_repo: FakeUserRepository, valid_user: User
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
     ) -> None:
         fake_repo.save(valid_user)
-        service = UserService(user_repo=fake_repo)
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
 
         result1 = service.deactivate(valid_user.id)
         result2 = service.deactivate(valid_user.id)
@@ -308,7 +332,10 @@ class TestUserServiceDeactivate:
 
     # CT-05: Revoga todos os refresh tokens do usuário
     def test_deactivate_revokes_all_refresh_tokens(
-        self, fake_repo: FakeUserRepository, valid_user: User
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
     ) -> None:
         fake_repo.save(valid_user)
         refresh_repo = InMemoryRefreshTokenRepository()
@@ -317,7 +344,11 @@ class TestUserServiceDeactivate:
         refresh_repo.register_token_for_user(valid_user.id, "token1")
         refresh_repo.register_token_for_user(valid_user.id, "token2")
 
-        service = UserService(user_repo=fake_repo, refresh_token_repo=refresh_repo)
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+            refresh_token_repo=refresh_repo,
+        )
 
         service.deactivate(valid_user.id)
 
@@ -327,19 +358,30 @@ class TestUserServiceDeactivate:
 
     # CT-06: Lança exceção se usuário não existe
     def test_deactivate_user_not_found_raises(
-        self, fake_repo: FakeUserRepository
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
-        service = UserService(user_repo=fake_repo)
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
 
         with pytest.raises(UserNotFoundError):
             service.deactivate("id-que-nao-existe")
 
     # CT-07: Transição de estado - ativo -> inativo
     def test_deactivate_state_transition(
-        self, fake_repo: FakeUserRepository, valid_user: User
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
     ) -> None:
         fake_repo.save(valid_user)
-        service = UserService(user_repo=fake_repo)
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
 
         # Inicialmente ativo
         assert valid_user.is_active is True
