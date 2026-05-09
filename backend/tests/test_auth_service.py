@@ -480,3 +480,137 @@ class TestAuthServiceLogout:
 
         # Não deve lançar erro mesmo sem repositório
         auth_service.logout(refresh_token)
+
+
+class TestAuthServiceInactiveUser:
+    """Testes para desativação de conta (US-17)."""
+
+    def test_login_usuario_inativo_retorna_credenciais_invalidas(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-01: Login de usuário inativo retorna InvalidCredentialsError
+        (não revela que a conta existe mas está inativa)."""
+        # Marca o usuário como inativo
+        valid_user.deactivate()
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
+        )
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = True
+
+        with pytest.raises(InvalidCredentialsError) as exc_info:
+            auth_service.login(
+                email=valid_user.email.value, password="SenhaCorreta@123"
+            )
+
+        # Não deve tentar gerar tokens
+        token_provider_mock.generate_access_token.assert_not_called()
+        token_provider_mock.generate_refresh_token.assert_not_called()
+        # Exceção deve ser a mesma de credenciais inválidas (não específica)
+        assert str(exc_info.value) == "Credenciais inválidas."
+
+    def test_login_usuario_inativo_mesma_mensagem_usuario_inexistente(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-02: Login com usuário inativo retorna a mesma mensagem de erro
+        que usuário inexistente (segurança: não enumera contas)."""
+        valid_user.deactivate()
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
+        )
+
+        # Cenário 1: usuário inativo
+        user_repository_mock.find_by_email.return_value = valid_user
+        try:
+            auth_service.login(
+                email=valid_user.email.value, password="SenhaCorreta@123"
+            )
+        except InvalidCredentialsError as exc_inactive:
+            msg_inactive = str(exc_inactive)
+
+        # Cenário 2: usuário inexistente
+        user_repository_mock.find_by_email.return_value = None
+        try:
+            auth_service.login(
+                email="naoexiste@example.com", password="SenhaCorreta@123"
+            )
+        except InvalidCredentialsError as exc_notfound:
+            msg_notfound = str(exc_notfound)
+
+        # Ambos retornam a mesma mensagem
+        assert msg_inactive == msg_notfound == "Credenciais inválidas."
+
+    def test_login_senha_incorreta_usuario_inativo_retorna_credenciais_invalidas(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-03: Se usuário está inativo, rejeita antes de verificar senha
+        (evita timing attacks, atua uniformemente)."""
+        valid_user.deactivate()
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
+        )
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = False  # Senha errada
+
+        with pytest.raises(InvalidCredentialsError):
+            auth_service.login(email=valid_user.email.value, password="SenhaErrada@123")
+
+        # Verifica que não tentou validar a senha (rejeita antes)
+        password_hasher_mock.verify.assert_not_called()
+
+    def test_reativacao_permite_login(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-04: Após reativação, login com senha correta funciona novamente
+        (transição ativo -> inativo -> ativo)."""
+        # Desativa e depois reativa
+        valid_user.deactivate()
+        valid_user.activate()
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
+        )
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = True
+        token_provider_mock.generate_access_token.return_value = "access.jwt"
+        token_provider_mock.generate_refresh_token.return_value = "refresh.jwt"
+
+        result = auth_service.login(
+            email=valid_user.email.value, password="SenhaCorreta@123"
+        )
+
+        assert result["access_token"] == "access.jwt"
+        assert result["refresh_token"] == "refresh.jwt"

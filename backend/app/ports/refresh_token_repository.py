@@ -9,3 +9,8 @@ class RefreshTokenRepository(ABC):
 
     @abstractmethod
     def is_revoked(self, token: str) -> bool: ...
+
+    @abstractmethod
+    def revoke_all_by_user(self, user_id: str) -> None:
+        """Revoga todos os refresh tokens ativos de um usuário (idempotente)."""
+        ...

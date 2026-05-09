@@ -123,3 +123,34 @@ def register_user(
             detail=str(exc),
         ) from exc
     return to_user_response(user)
+
+
+@router.delete(
+    "/me",
+    status_code=204,
+    responses={
+        204: {"description": "Conta desativada com sucesso."},
+        401: {"description": "Token ausente, inválido ou expirado."},
+    },
+    description=(
+        "Desativa a conta do usuário autenticado (soft delete).\n\n"
+        "Requer `Authorization: Bearer <access_token>` no header. "
+        "Para testar via Swagger UI, clique em **Authorize** (cadeado) "
+        "antes de executar."
+    ),
+)
+def deactivate_me(
+    user_id: Annotated[str, Depends(get_current_user)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> None:
+    """Desativa a conta do usuário autenticado (soft delete).
+
+    Marca is_active=False, revoga todos os refresh tokens ativos e preserva o histórico.
+    """
+    try:
+        user_service.deactivate(user_id)
+    except UserNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
