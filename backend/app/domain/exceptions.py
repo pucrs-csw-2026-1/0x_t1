@@ -41,6 +41,13 @@ class EmailAlreadyExistsError(DomainError):
         super().__init__(f"Email já cadastrado: {email}")
 
 
+class UsernameAlreadyExistsError(DomainError):
+    """Exceção para nome de usuário já existente."""
+
+    def __init__(self, username: str) -> None:
+        super().__init__(f"Nome de usuário já cadastrado: {username}")
+
+
 class InvalidCredentialsError(DomainError):
     """Exceção para credenciais inválidas."""
 

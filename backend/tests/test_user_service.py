@@ -13,7 +13,10 @@ from app.domain.exceptions import (
     AccessLevelNotFoundError,
     EmailAlreadyExistsError,
     InvalidEmailError,
+    InvalidNameError,
     InvalidPaginationError,
+    InvalidUsernameError,
+    UsernameAlreadyExistsError,
     UserNotFoundError,
     WeakPasswordError,
 )
@@ -572,3 +575,216 @@ class TestUserServiceListUsers:
     def test_cursor_inexistente_lanca_excecao(self, service: UserService) -> None:
         with pytest.raises(InvalidPaginationError):
             service.list_users(limit=20, cursor="cursor-que-nao-existe")
+
+
+class TestUserServiceUpdateProfile:
+    """Testes de UserService.update_profile (US-15)."""
+
+    @pytest.fixture
+    def service(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> UserService:
+        return UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
+
+    @pytest.fixture
+    def saved_user(self, fake_repo: FakeUserRepository, valid_user: User) -> User:
+        return fake_repo.save(valid_user)
+
+    # CT-15.1: usuário não encontrado lança UserNotFoundError
+    def test_usuario_inexistente_lanca_excecao(self, service: UserService) -> None:
+        with pytest.raises(UserNotFoundError):
+            service.update_profile("id-que-nao-existe", first_name="Ana")
+
+    # CT-15.2: atualização de first_name persiste e retorna usuário atualizado
+    def test_atualiza_first_name(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        result = service.update_profile(saved_user.id, first_name="Joana")
+
+        assert result.first_name == "Joana"
+        assert result.last_name == saved_user.last_name
+
+    # CT-15.3: atualização de last_name persiste e retorna usuário atualizado
+    def test_atualiza_last_name(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        result = service.update_profile(saved_user.id, last_name="Souza")
+
+        assert result.last_name == "Souza"
+        assert result.first_name == saved_user.first_name
+
+    # CT-15.4: atualização de email válido persiste o novo email
+    def test_atualiza_email(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        result = service.update_profile(saved_user.id, email="novo@example.com")
+
+        assert result.email.value == "novo@example.com"
+
+    # CT-15.5: atualização de username válido persiste o novo username
+    def test_atualiza_username(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        result = service.update_profile(saved_user.id, username="novo.username")
+
+        assert result.username.value == "novo.username"
+
+    # CT-15.6 (CA-02): updated_at é atualizado a cada mudança
+    def test_updated_at_e_atualizado(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        original_updated_at = saved_user.updated_at
+
+        result = service.update_profile(saved_user.id, first_name="Joana")
+
+        assert result.updated_at > original_updated_at
+
+    # CT-15.7 (CA-03): email duplicado (de outro usuário) lança EmailAlreadyExistsError
+    def test_email_duplicado_lanca_excecao(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+        saved_user: User,
+    ) -> None:
+        outro = User(
+            username=Username("outro.usuario"),
+            email=Email("outro@example.com"),
+            hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+            first_name="Outro",
+            last_name="Usuario",
+        )
+        fake_repo.save(outro)
+
+        with pytest.raises(EmailAlreadyExistsError):
+            service.update_profile(saved_user.id, email="outro@example.com")
+
+    # CT-15.8 (CA-04): username duplicado lança UsernameAlreadyExistsError
+    def test_username_duplicado_lanca_excecao(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+        saved_user: User,
+    ) -> None:
+        outro = User(
+            username=Username("outro.usuario"),
+            email=Email("outro@example.com"),
+            hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+            first_name="Outro",
+            last_name="Usuario",
+        )
+        fake_repo.save(outro)
+
+        with pytest.raises(UsernameAlreadyExistsError):
+            service.update_profile(saved_user.id, username="outro.usuario")
+
+    # CT-15.9 (CA-05): email inválido lança InvalidEmailError
+    def test_email_invalido_lanca_excecao(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        with pytest.raises(InvalidEmailError):
+            service.update_profile(saved_user.id, email="nao-e-um-email")
+
+    # CT-15.10 (CA-06): username inválido (curto demais) lança InvalidUsernameError
+    def test_username_invalido_lanca_excecao(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        with pytest.raises(InvalidUsernameError):
+            service.update_profile(saved_user.id, username="curto")
+
+    # CT-15.11 (CA-10): payload vazio não altera nenhum campo nem updated_at
+    def test_payload_vazio_nao_altera_usuario(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        original_updated_at = saved_user.updated_at
+        original_email = saved_user.email
+        original_username = saved_user.username
+        original_first_name = saved_user.first_name
+        original_last_name = saved_user.last_name
+
+        result = service.update_profile(saved_user.id)
+
+        assert result.email == original_email
+        assert result.username == original_username
+        assert result.first_name == original_first_name
+        assert result.last_name == original_last_name
+        assert result.updated_at == original_updated_at
+
+    # CT-15.12 (CA-10): atualização parcial preserva campos não informados
+    def test_atualizacao_parcial_preserva_outros_campos(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        email_original = saved_user.email
+        username_original = saved_user.username
+
+        result = service.update_profile(saved_user.id, first_name="Joana")
+
+        assert result.email == email_original
+        assert result.username == username_original
+        assert result.last_name == saved_user.last_name
+
+    # CT-15.13: usuário pode atualizar para o próprio email sem 409
+    def test_mesmo_email_do_proprio_usuario_nao_conflita(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        result = service.update_profile(saved_user.id, email=saved_user.email.value)
+
+        assert result.email == saved_user.email
+
+    # CT-15.14: usuário pode atualizar para o próprio username sem 409
+    def test_mesmo_username_do_proprio_usuario_nao_conflita(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        result = service.update_profile(
+            saved_user.id, username=saved_user.username.value
+        )
+
+        assert result.username == saved_user.username
+
+    # CT-15.15 (CA-09): nome inválido lança InvalidNameError
+    def test_first_name_invalido_lanca_excecao(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        with pytest.raises(InvalidNameError):
+            service.update_profile(saved_user.id, first_name="   ")
+
+    # CT-15.16: atualização persiste no repositório
+    def test_atualizacao_persiste_no_repositorio(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+        saved_user: User,
+    ) -> None:
+        service.update_profile(saved_user.id, first_name="Persistida")
+
+        fetched = fake_repo.find_by_id(saved_user.id)
+        assert fetched is not None
+        assert fetched.first_name == "Persistida"
