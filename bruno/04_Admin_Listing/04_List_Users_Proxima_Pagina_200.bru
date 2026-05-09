@@ -1,0 +1,44 @@
+meta {
+  name: 04 List Users Proxima Pagina 200
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/admin/users?limit=1&cursor={{next_cursor}}
+  body: none
+  auth: bearer
+}
+
+params:query {
+  limit: 1
+  cursor: {{next_cursor}}
+}
+
+auth:bearer {
+  token: {{admin_access_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.items: isDefined
+}
+
+tests {
+  test("US-14: proxima pagina retorna items", function() {
+    expect(res.body.items).to.be.an("array");
+  });
+}
+
+docs {
+  Continuação da paginação iniciada no request 03.
+
+  Pré-requisitos:
+  1. Request 03 executado com sucesso E retornou next_cursor != null
+     (ou seja, banco tem pelo menos 2 users).
+  2. {{admin_access_token}} ainda válido.
+
+  Se {{next_cursor}} estiver vazio, Bruno envia a query string
+  literalmente como "?cursor=" e o backend interpreta cursor=None
+  (página inicial). Não é o cenário desejado — rode 03 antes.
+}

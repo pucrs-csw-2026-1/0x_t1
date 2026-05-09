@@ -1,4 +1,4 @@
-"""Testes unitários para UserService (US-10)."""
+"""Testes unitarios para UserService (US-10 + US-13)."""
 
 from unittest.mock import MagicMock
 
@@ -8,23 +8,35 @@ from app.adapters.in_memory_refresh_token_repository import (
     InMemoryRefreshTokenRepository,
 )
 from app.application.user_service import UserService
+from app.domain.access_level import AccessLevel
 from app.domain.exceptions import (
+    AccessLevelNotFoundError,
     EmailAlreadyExistsError,
     InvalidEmailError,
+    InvalidPaginationError,
     UserNotFoundError,
     WeakPasswordError,
 )
 from app.domain.user import Email, HashedPassword, User, Username
 from app.ports.password_hasher import PasswordHasher
+from tests.conftest import USER_UUID
+from tests.fakes.access_level_repository import FakeAccessLevelRepository
 from tests.fakes.user_repository import FakeUserRepository
 
 
 class TestUserService:
     @pytest.fixture
-    def service(self, fake_repo: FakeUserRepository) -> UserService:
-        return UserService(user_repo=fake_repo)
+    def service(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> UserService:
+        return UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
 
-    # CT-01 (partição — existente): get_user_by_id retorna o usuário correto
+    # CT-01 (particao - existente): get_user_by_id retorna o usuario correto
     def test_get_user_by_id_existente_retorna_usuario(
         self,
         service: UserService,
@@ -44,7 +56,7 @@ class TestUserService:
         assert result.is_active == valid_user.is_active
         assert result.created_at == valid_user.created_at
 
-    # CT-02: senha nunca é retornada (hashed_password não exposta na entidade retornada)
+    # CT-02: senha nunca eh retornada (hashed_password nao exposta)
     def test_get_user_by_id_nao_expoe_senha(
         self,
         service: UserService,
@@ -58,7 +70,7 @@ class TestUserService:
         assert not hasattr(result, "password")
         assert repr(result.hashed_password) == "HashedPassword(***)"
 
-    # CT-03 (partição — inexistente): get_user_by_id lança UserNotFoundError
+    # CT-03 (particao - inexistente): get_user_by_id lanca UserNotFoundError
     def test_get_user_by_id_inexistente_lanca_excecao(
         self,
         service: UserService,
@@ -80,14 +92,23 @@ class TestUserService:
 
 
 class TestUserServiceRegister:
-    # Spy + Fake: verifica que PasswordHasher.hash é chamado exatamente 1 vez
-    def test_register_calls_hasher_once_and_persists(
-        self, fake_repo: FakeUserRepository
+    """Testes de UserService.register (US-09 + US-13)."""
+
+    # Spy + Fake: verifica que PasswordHasher.hash eh chamado exatamente 1 vez
+    # e que o usuario eh persistido com o UUID do perfil 'user' (US-13).
+    def test_register_calls_hasher_once_and_persists_with_user_role(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy: PasswordHasher = MagicMock(spec=PasswordHasher)
         spy.hash.return_value = "$2b$12$fakehash"
 
-        service = UserService(user_repo=fake_repo, password_hasher=spy)
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+            password_hasher=spy,
+        )
 
         user = service.register(
             first_name="Joao",
@@ -95,19 +116,27 @@ class TestUserServiceRegister:
             username="joao.silva",
             email="joao@example.com",
             password="S3nh@Forte!",
-            access_level=["user"],
         )
 
         spy.hash.assert_called_once_with("S3nh@Forte!")
-        # senha não é exposta
         assert not hasattr(user, "password")
-        # persistido no fake repo
+        # US-13: usuario novo sempre cadastrado com perfil 'user'
+        assert user.access_level == [USER_UUID]
+        # persistido no fake repo com a mesma access_level
         fetched = fake_repo.find_by_email(Email("joao@example.com"))
         assert fetched is not None
         assert fetched.id == user.id
+        assert fetched.access_level == [USER_UUID]
 
-    # Stub: controla find_by_email para simular email duplicado
-    def test_register_with_duplicate_email_raises(self) -> None:
+    # US-13 - particao 1: register sem campo access_level no payload eh aceito
+    # (ja coberto pelo teste acima, que nao passa o parametro).
+
+    # US-13 - particao 2: register com email duplicado lanca antes de tocar
+    # no catalogo de access_level
+    def test_register_with_duplicate_email_raises(
+        self,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
         class StubRepo(FakeUserRepository):
             def __init__(self, existing_user: User) -> None:
                 super().__init__()
@@ -116,7 +145,6 @@ class TestUserServiceRegister:
             def find_by_email(self, email: Email) -> User | None:
                 return self._existing
 
-        # cria um usuário existente (constrói com valores válidos)
         existing = User(
             username=Username("exist.user"),
             email=Email("exist@example.com"),
@@ -127,7 +155,9 @@ class TestUserServiceRegister:
 
         stub = StubRepo(existing)
         service = UserService(
-            user_repo=stub, password_hasher=MagicMock(spec=PasswordHasher)
+            user_repo=stub,
+            access_level_repo=fake_access_level_repo,
+            password_hasher=MagicMock(spec=PasswordHasher),
         )
 
         with pytest.raises(EmailAlreadyExistsError):
@@ -139,10 +169,16 @@ class TestUserServiceRegister:
                 password="S3nh@Forte!",
             )
 
-    # Validação de e-mail inválido
-    def test_register_invalid_email_raises(self, fake_repo: FakeUserRepository) -> None:
+    # Email invalido continua sendo erro de dominio
+    def test_register_invalid_email_raises(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
         service = UserService(
-            user_repo=fake_repo, password_hasher=MagicMock(spec=PasswordHasher)
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+            password_hasher=MagicMock(spec=PasswordHasher),
         )
 
         with pytest.raises(InvalidEmailError):
@@ -154,10 +190,16 @@ class TestUserServiceRegister:
                 password="S3nh@Forte!",
             )
 
-    # Senha fraca deve lançar WeakPasswordError
-    def test_register_weak_password_raises(self, fake_repo: FakeUserRepository) -> None:
+    # Senha fraca continua sendo erro de dominio
+    def test_register_weak_password_raises(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
         service = UserService(
-            user_repo=fake_repo, password_hasher=MagicMock(spec=PasswordHasher)
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+            password_hasher=MagicMock(spec=PasswordHasher),
         )
 
         with pytest.raises(WeakPasswordError):
@@ -169,13 +211,20 @@ class TestUserServiceRegister:
                 password="weak",
             )
 
-    # Transição de estado: não cadastrado -> cadastrado -> tentativa duplicada -> erro
-    def test_state_transition(self, fake_repo: FakeUserRepository) -> None:
+    # Transicao de estado: nao cadastrado -> cadastrado -> tentativa duplicada -> erro
+    def test_state_transition(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
         spy: PasswordHasher = MagicMock(spec=PasswordHasher)
         spy.hash.return_value = "$2b$12$fakehash"
-        service = UserService(user_repo=fake_repo, password_hasher=spy)
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+            password_hasher=spy,
+        )
 
-        # inicialmente não existe
         assert fake_repo.find_by_email(Email("tst@example.com")) is None
 
         service.register(
@@ -188,7 +237,6 @@ class TestUserServiceRegister:
 
         assert fake_repo.find_by_email(Email("tst@example.com")) is not None
 
-        # tentativa duplicada
         with pytest.raises(EmailAlreadyExistsError):
             service.register(
                 first_name="Tst2",
@@ -305,3 +353,180 @@ class TestUserServiceDeactivate:
         assert fetched is not None
         assert fetched.is_active is False
 
+    # US-13 CA: catalogo sem o perfil 'user' lanca AccessLevelNotFoundError
+    # (sinaliza Terraform fora de sincronia, em vez de fallback silencioso).
+    def test_register_sem_catalogo_user_levanta_excecao(
+        self,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        empty_catalog = FakeAccessLevelRepository(levels=[])
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=empty_catalog,
+            password_hasher=MagicMock(spec=PasswordHasher),
+        )
+
+        with pytest.raises(AccessLevelNotFoundError):
+            service.register(
+                first_name="Joao",
+                last_name="Silva",
+                username="joao.silva",
+                email="joao@example.com",
+                password="S3nh@Forte!",
+            )
+
+    # US-13 CA: register sempre atribui o UUID do 'user', mesmo com catalogo
+    # contendo 'admin' como primeiro item (ordem do catalogo nao influencia).
+    def test_register_busca_titulo_user_e_nao_o_primeiro_do_catalogo(
+        self,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        # admin antes de user proposito de garantir que find_by_title eh
+        # chamado, nao um "pega o primeiro"
+        catalog = FakeAccessLevelRepository(
+            levels=[
+                AccessLevel(id="uuid-admin-fake", title="admin"),
+                AccessLevel(id="uuid-user-fake", title="user"),
+            ]
+        )
+        spy: PasswordHasher = MagicMock(spec=PasswordHasher)
+        spy.hash.return_value = "$2b$12$fakehash"
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=catalog,
+            password_hasher=spy,
+        )
+
+        user = service.register(
+            first_name="Joao",
+            last_name="Silva",
+            username="joao.silva",
+            email="joao@example.com",
+            password="S3nh@Forte!",
+        )
+
+        assert user.access_level == ["uuid-user-fake"]
+
+
+class TestUserServiceListUsers:
+    """Testes de UserService.list_users (US-14)."""
+
+    @pytest.fixture
+    def service(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> UserService:
+        return UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
+
+    @staticmethod
+    def _make_user(seq: int) -> User:
+        # IDs sequenciais para ordenacao deterministica nos testes.
+        return User(
+            id=f"user-{seq:04d}",
+            username=Username(f"user.{seq:04d}"),
+            email=Email(f"user{seq}@example.com"),
+            hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+            first_name="Test",
+            last_name=f"User{seq}",
+        )
+
+    # CT-14.1: lista vazia retorna pagina vazia sem cursor
+    def test_repo_vazio_retorna_pagina_vazia_sem_cursor(
+        self, service: UserService
+    ) -> None:
+        page = service.list_users(limit=20)
+
+        assert page.items == []
+        assert page.next_cursor is None
+
+    # CT-14.2: quantidade < limit retorna todos sem cursor
+    def test_quantidade_menor_que_limit_retorna_todos(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        for i in range(1, 4):
+            fake_repo.save(self._make_user(i))
+
+        page = service.list_users(limit=10)
+
+        assert len(page.items) == 3
+        assert page.next_cursor is None
+
+    # CT-14.3: quantidade > limit devolve cursor para proxima pagina
+    def test_quantidade_maior_que_limit_devolve_cursor(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        for i in range(1, 6):
+            fake_repo.save(self._make_user(i))
+
+        page = service.list_users(limit=2)
+
+        assert len(page.items) == 2
+        assert page.next_cursor == page.items[-1].id
+
+    # CT-14.4: cursor avanca para a proxima pagina sem repetir items
+    def test_cursor_avanca_para_proxima_pagina(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        for i in range(1, 6):
+            fake_repo.save(self._make_user(i))
+
+        primeira = service.list_users(limit=2)
+        segunda = service.list_users(limit=2, cursor=primeira.next_cursor)
+
+        ids_primeira = {u.id for u in primeira.items}
+        ids_segunda = {u.id for u in segunda.items}
+        assert ids_primeira.isdisjoint(ids_segunda)
+        assert len(segunda.items) == 2
+
+    # CT-14.5: ultima pagina sinaliza fim com next_cursor None
+    def test_ultima_pagina_retorna_next_cursor_none(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        for i in range(1, 4):
+            fake_repo.save(self._make_user(i))
+
+        primeira = service.list_users(limit=2)
+        segunda = service.list_users(limit=2, cursor=primeira.next_cursor)
+
+        assert len(segunda.items) == 1
+        assert segunda.next_cursor is None
+
+    # CT-14.6: paginar 5 items de 2 em 2 cobre todos exatamente uma vez
+    def test_paginacao_completa_cobre_todos_os_itens(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        ids_criados: list[str] = []
+        for i in range(1, 6):
+            user = self._make_user(i)
+            fake_repo.save(user)
+            ids_criados.append(user.id)
+
+        coletados: list[str] = []
+        cursor: str | None = None
+        while True:
+            page = service.list_users(limit=2, cursor=cursor)
+            coletados.extend(u.id for u in page.items)
+            if page.next_cursor is None:
+                break
+            cursor = page.next_cursor
+
+        assert sorted(coletados) == sorted(ids_criados)
+
+    # CT-14.7: cursor inexistente lanca InvalidPaginationError
+    def test_cursor_inexistente_lanca_excecao(self, service: UserService) -> None:
+        with pytest.raises(InvalidPaginationError):
+            service.list_users(limit=20, cursor="cursor-que-nao-existe")

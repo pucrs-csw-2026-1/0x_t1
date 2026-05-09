@@ -16,6 +16,7 @@ from app.adapters.api.user_router import router
 from app.adapters.config.settings import Settings, settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.user_service import UserService
+from app.domain.access_level import AccessLevel
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
     InvalidEmailError,
@@ -24,6 +25,9 @@ from app.domain.exceptions import (
     WeakPasswordError,
 )
 from app.domain.user import User
+from tests.conftest import ADMIN_UUID, USER_UUID
+from tests.fakes.access_level_repository import FakeAccessLevelRepository
+from tests.fakes.user_repository import FakeUserRepository
 
 
 @pytest.fixture
@@ -247,6 +251,109 @@ class TestUserRouterRegister:
 
         assert response.status_code == 400
         assert "username" in response.json()["detail"].lower()
+
+
+class TestUserRouterRegisterAccessLevelDiscard:
+    """US-13: register publico nunca concede perfis elevados.
+
+    Critério de aceite: tentativa de auto-promocao via access_level no body
+    deve ser silenciosamente descartada e o usuario criado sempre com 'user'.
+    Cobre as 3 particoes: sem campo, lista vazia, payload com 'admin'.
+    """
+
+    def _post_register(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        body: dict[str, object],
+    ) -> tuple[int, dict[str, object]]:
+        """Roda POST /users/register usando UserService real com fakes,
+        para que access_level do response reflita o que o service decidiu."""
+        fake_user_repo = FakeUserRepository()
+        fake_access_level_repo = FakeAccessLevelRepository(
+            levels=[
+                AccessLevel(id=ADMIN_UUID, title="admin"),
+                AccessLevel(id=USER_UUID, title="user"),
+            ]
+        )
+        service = UserService(
+            user_repo=fake_user_repo,
+            access_level_repo=fake_access_level_repo,
+        )
+
+        app.dependency_overrides[get_user_service] = lambda: service
+
+        response = client.post("/users/register", json=body)
+
+        app.dependency_overrides.clear()
+        return response.status_code, response.json()
+
+    def test_register_sem_access_level_cria_como_user(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-13.4-01: payload sem access_level cria com perfil 'user'."""
+        status_code, body = self._post_register(
+            app,
+            client,
+            {
+                "first_name": "Joao",
+                "last_name": "Silva",
+                "username": "joao.silva",
+                "email": "joao@example.com",
+                "password": "S3nh@Forte!",
+            },
+        )
+
+        assert status_code == 201
+        assert body["access_level"] == [USER_UUID]
+
+    def test_register_com_access_level_vazio_cria_como_user(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-13.4-02: payload com access_level=[] cria com perfil 'user'."""
+        status_code, body = self._post_register(
+            app,
+            client,
+            {
+                "first_name": "Joao",
+                "last_name": "Silva",
+                "username": "joao.silva",
+                "email": "joao@example.com",
+                "password": "S3nh@Forte!",
+                "access_level": [],
+            },
+        )
+
+        assert status_code == 201
+        assert body["access_level"] == [USER_UUID]
+
+    def test_register_com_admin_no_payload_eh_silenciosamente_descartado(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-13.4-03: payload com access_level=[ADMIN_UUID] (auto-promocao)
+        eh aceito sem 422 mas o usuario eh criado como 'user'."""
+        status_code, body = self._post_register(
+            app,
+            client,
+            {
+                "first_name": "Joao",
+                "last_name": "Silva",
+                "username": "joao.silva",
+                "email": "joao@example.com",
+                "password": "S3nh@Forte!",
+                "access_level": [ADMIN_UUID],
+            },
+        )
+
+        assert status_code == 201
+        assert body["access_level"] == [USER_UUID]
+        assert ADMIN_UUID not in body["access_level"]
 
 
 class TestUserRouterAuthProtection:

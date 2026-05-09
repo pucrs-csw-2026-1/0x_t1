@@ -22,5 +22,7 @@ class Settings(BaseSettings):
 
     dynamodb_table_users: str = "user"
 
+    dynamodb_table_access_levels: str = "access_level"
+
 
 settings = Settings()  # type: ignore[call-arg]

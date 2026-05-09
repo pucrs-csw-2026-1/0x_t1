@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 import boto3
 from botocore.exceptions import ClientError
-from mypy_boto3_dynamodb.service_resource import DynamoDBServiceResource, Table
+from mypy_boto3_dynamodb.service_resource import Table
 
 from app.domain.user import Email, HashedPassword, User, Username
-from app.ports.user_repository import UserRepository
+from app.ports.user_repository import UserPage, UserRepository
 
 
 class DynamoUserRepository(UserRepository):
@@ -20,7 +20,7 @@ class DynamoUserRepository(UserRepository):
         auto_create: bool = False,
     ) -> None:
         endpoint_url = endpoint_url or os.getenv("DYNAMODB_ENDPOINT_URL")
-        self._client: DynamoDBServiceResource = boto3.resource(
+        self._client = boto3.resource(
             "dynamodb", endpoint_url=endpoint_url, region_name="us-east-1"
         )
         if auto_create:
@@ -53,6 +53,16 @@ class DynamoUserRepository(UserRepository):
         )
         items = resp.get("Items", [])
         return self._to_user(items[0]) if items else None
+
+    def find_all(self, limit: int, cursor: str | None = None) -> UserPage:
+        scan_kwargs: dict[str, Any] = {"Limit": limit}
+        if cursor is not None:
+            scan_kwargs["ExclusiveStartKey"] = {"id": cursor}
+        resp = self._table.scan(**scan_kwargs)
+        items = [self._to_user(it) for it in resp.get("Items", [])]
+        last_key = resp.get("LastEvaluatedKey")
+        next_cursor = cast(str, last_key["id"]) if last_key else None
+        return UserPage(items=items, next_cursor=next_cursor)
 
     def _to_item(self, user: User) -> dict[str, Any]:
         return {

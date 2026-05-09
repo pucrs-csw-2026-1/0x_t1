@@ -16,18 +16,8 @@ body:json {
     "last_name": "{{last_name}}",
     "username": "{{username}}",
     "email": "{{email}}",
-    "password": "{{password}}",
-    "access_level": ["user"]
+    "password": "{{password}}"
   }
-}
-
-vars:pre-request {
-  baseUrl: http://127.0.0.1:8000/
-  first_name: Juca
-  last_name: Bala
-  username: juca.bala
-  email: juca@email.com
-  password: Senha@123
 }
 
 assert {

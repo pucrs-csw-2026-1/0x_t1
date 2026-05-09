@@ -1,0 +1,44 @@
+meta {
+  name: 01 Register Auto Promocao Descartada 201
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Auto",
+    "last_name": "Promotor",
+    "username": "auto.promotor",
+    "email": "auto.promotor@example.com",
+    "password": "Senha@123",
+    "access_level": ["{{admin_uuid}}"]
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.email: eq auto.promotor@example.com
+  res.body.access_level: length 1
+}
+
+tests {
+  test("US-13: tentativa de auto-promocao a admin eh silenciosamente descartada", function() {
+    const ADMIN_UUID = bru.getEnvVar("admin_uuid");
+    const USER_UUID = bru.getEnvVar("user_uuid");
+    expect(res.body.access_level).to.not.include(ADMIN_UUID);
+    expect(res.body.access_level).to.include(USER_UUID);
+  });
+}
+
+docs {
+  Critério US-13: o cadastro público nunca concede perfis elevados.
+  Mesmo enviando `access_level: ["<UUID-admin>"]` no body, o resultado
+  deve ser um usuário com access_level = [<UUID-user>] — descarte
+  silencioso (sem 422).
+}
