@@ -2,7 +2,9 @@ from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.domain.exceptions import (
     AccessLevelNotFoundError,
     EmailAlreadyExistsError,
+    InvalidCredentialsError,
     InvalidPaginationError,
+    SamePasswordError,
     UsernameAlreadyExistsError,
     UserNotFoundError,
 )
@@ -142,6 +144,35 @@ class UserService:
                 first_name if first_name is not None else user.first_name,
                 last_name if last_name is not None else user.last_name,
             )
+
+        return self._user_repo.save(user)
+
+    def change_password(
+        self,
+        user_id: str,
+        current_password: str,
+        new_password: str,
+    ) -> User:
+        """Troca a senha do usuário autenticado.
+
+        Raises:
+            UserNotFoundError: se o usuário não for encontrado.
+            InvalidCredentialsError: se current_password estiver incorreta.
+            SamePasswordError: se new_password for igual à senha atual.
+            WeakPasswordError: se new_password não atender às regras de domínio.
+        """
+        user = self.get_user_by_id(user_id)
+
+        if not self._hasher.verify(current_password, user.hashed_password.value):
+            raise InvalidCredentialsError()
+
+        if self._hasher.verify(new_password, user.hashed_password.value):
+            raise SamePasswordError()
+
+        validate_raw_password(new_password)
+
+        hashed = self._hasher.hash(new_password)
+        user.change_password(HashedPassword(hashed))
 
         return self._user_repo.save(user)
 

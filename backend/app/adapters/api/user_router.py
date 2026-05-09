@@ -8,9 +8,11 @@ from app.adapters.api.dependencies import get_current_user, get_user_service
 from app.application.user_service import UserService
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
+    InvalidCredentialsError,
     InvalidEmailError,
     InvalidNameError,
     InvalidUsernameError,
+    SamePasswordError,
     UsernameAlreadyExistsError,
     UserNotFoundError,
     WeakPasswordError,
@@ -36,6 +38,11 @@ class UserUpdate(BaseModel):
     last_name: str | None = None
     email: str | None = None
     username: str | None = None
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class UserCreate(BaseModel):
@@ -140,6 +147,53 @@ def update_me(
             detail=str(exc),
         ) from exc
     return to_user_response(user)
+
+
+@router.put(
+    "/me/password",
+    status_code=204,
+    responses={
+        400: {"description": "Nova senha igual à senha atual."},
+        401: {"description": "Token inválido ou senha atual incorreta."},
+        422: {"description": "Nova senha fraca."},
+    },
+    description=(
+        "Troca a senha do usuário autenticado.\n\n"
+        "Requer `Authorization: Bearer <access_token>` no header."
+    ),
+)
+def change_password(
+    payload: PasswordChangeRequest,
+    user_id: Annotated[str, Depends(get_current_user)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> None:
+    """Troca a senha do usuário autenticado."""
+    try:
+        user_service.change_password(
+            user_id=user_id,
+            current_password=payload.current_password,
+            new_password=payload.new_password,
+        )
+    except UserNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except InvalidCredentialsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        ) from exc
+    except SamePasswordError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except WeakPasswordError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post(

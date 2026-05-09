@@ -19,9 +19,11 @@ from app.application.user_service import UserService
 from app.domain.access_level import AccessLevel
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
+    InvalidCredentialsError,
     InvalidEmailError,
     InvalidNameError,
     InvalidUsernameError,
+    SamePasswordError,
     UsernameAlreadyExistsError,
     UserNotFoundError,
     WeakPasswordError,
@@ -868,3 +870,132 @@ class TestUserRouterUpdateProfile:
         assert data["last_name"] == valid_user.last_name
         assert data["email"] == valid_user.email.value
         assert data["username"] == valid_user.username.value
+
+
+class TestUserRouterChangePassword:
+    """Testes do endpoint PUT /users/me/password (US-16)."""
+
+    _PAYLOAD = {"current_password": "S3nh@Atual!", "new_password": "N0v@Senha!"}
+
+    # CT-16.R01 (CA-01): dados válidos retornam 204 sem body
+    def test_put_password_dados_validos_retorna_204(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.change_password.return_value = valid_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.put("/users/me/password", json=self._PAYLOAD)
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 204
+        assert response.text == ""
+        user_service_mock.change_password.assert_called_once_with(
+            user_id=valid_user.id,
+            current_password=self._PAYLOAD["current_password"],
+            new_password=self._PAYLOAD["new_password"],
+        )
+
+    # CT-16.R02 (CA-07): sem token retorna 401
+    def test_put_password_sem_token_retorna_401(
+        self,
+        client: TestClient,
+    ) -> None:
+        response = client.put("/users/me/password", json=self._PAYLOAD)
+
+        assert response.status_code == 401
+
+    # CT-16.R03 (CA-03): senha atual incorreta retorna 401
+    def test_put_password_senha_atual_incorreta_retorna_401(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.change_password.side_effect = InvalidCredentialsError()
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.put(
+            "/users/me/password",
+            json={"current_password": "errada", "new_password": "N0v@Senha!"},
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 401
+        assert "Credenciais" in response.json()["detail"]
+
+    # CT-16.R04 (CA-04): nova senha igual à atual retorna 400
+    def test_put_password_nova_igual_atual_retorna_400(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.change_password.side_effect = SamePasswordError()
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.put(
+            "/users/me/password",
+            json={"current_password": "S3nh@Atual!", "new_password": "S3nh@Atual!"},
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 400
+
+    # CT-16.R05 (CA-05): nova senha fraca retorna 422
+    def test_put_password_nova_fraca_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.change_password.side_effect = WeakPasswordError(
+            "deve ter ao menos 8 caracteres"
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.put(
+            "/users/me/password",
+            json={"current_password": "S3nh@Atual!", "new_password": "fraca"},
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422
+        assert "Senha fraca" in response.json()["detail"]
+
+    # CT-16.R06: usuário não encontrado retorna 404
+    def test_put_password_usuario_inexistente_retorna_404(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.change_password.side_effect = UserNotFoundError(valid_user.id)
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.put("/users/me/password", json=self._PAYLOAD)
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 404
