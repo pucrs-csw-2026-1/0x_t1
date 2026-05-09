@@ -176,6 +176,40 @@ class UserService:
 
         return self._user_repo.save(user)
 
+    def admin_update(
+        self,
+        admin_id: str,
+        target_user_id: str,
+        access_level: list[str] | None = None,
+        is_active: bool | None = None,
+    ) -> User:
+        """Atualiza access_level e/ou is_active de um usuário como admin.
+
+        Raises:
+            ValueError: se admin_id == target_user_id.
+            UserNotFoundError: se o usuário alvo não for encontrado.
+            AccessLevelNotFoundError: se algum UUID de access_level for inválido.
+        """
+        if admin_id == target_user_id:
+            raise ValueError("Admin não pode alterar a si mesmo.")
+
+        user = self.get_user_by_id(target_user_id)
+
+        if access_level is not None:
+            for level_id in access_level:
+                if self._access_level_repo.find_by_id(level_id) is None:
+                    raise AccessLevelNotFoundError(level_id)
+            user.access_level = access_level
+            user._touch()
+
+        if is_active is not None:
+            if is_active:
+                user.activate()
+            else:
+                user.deactivate()
+
+        return self._user_repo.save(user)
+
     def deactivate(self, user_id: str) -> User:
         """Desativa um usuário, revogando todos os seus refresh tokens (idempotente).
 
