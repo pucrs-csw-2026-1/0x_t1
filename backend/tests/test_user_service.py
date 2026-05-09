@@ -12,6 +12,7 @@ from app.domain.access_level import AccessLevel
 from app.domain.exceptions import (
     AccessLevelNotFoundError,
     EmailAlreadyExistsError,
+    InvalidCredentialsError,
     InvalidEmailError,
     InvalidPaginationError,
     UserNotFoundError,
@@ -394,6 +395,70 @@ class TestUserServiceDeactivate:
         fetched = fake_repo.find_by_id(valid_user.id)
         assert fetched is not None
         assert fetched.is_active is False
+
+    def test_deactivate_with_credentials_success(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        fake_repo.save(valid_user)
+        hasher = MagicMock(spec=PasswordHasher)
+        hasher.verify.return_value = True
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+            password_hasher=hasher,
+        )
+
+        deactivated = service.deactivate_with_credentials(
+            username=valid_user.username.value,
+            password="Senha@123",
+        )
+
+        assert deactivated.is_active is False
+        hasher.verify.assert_called_once_with(
+            "Senha@123", valid_user.hashed_password.value
+        )
+
+    def test_deactivate_with_credentials_wrong_password_raises(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        fake_repo.save(valid_user)
+        hasher = MagicMock(spec=PasswordHasher)
+        hasher.verify.return_value = False
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+            password_hasher=hasher,
+        )
+
+        with pytest.raises(InvalidCredentialsError):
+            service.deactivate_with_credentials(
+                username=valid_user.username.value,
+                password="SenhaErrada@123",
+            )
+
+    def test_deactivate_with_credentials_unknown_user_raises(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        hasher = MagicMock(spec=PasswordHasher)
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+            password_hasher=hasher,
+        )
+
+        with pytest.raises(InvalidCredentialsError):
+            service.deactivate_with_credentials(
+                username="usuario.inexistente",
+                password="Senha@123",
+            )
 
     # US-13 CA: catalogo sem o perfil 'user' lanca AccessLevelNotFoundError
     # (sinaliza Terraform fora de sincronia, em vez de fallback silencioso).

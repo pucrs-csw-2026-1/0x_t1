@@ -27,6 +27,7 @@ from app.adapters.api.user_router import router as user_router
 PUBLIC_ROUTES: set[tuple[str, str]] = {
     ("/health", "GET"),
     ("/users/register", "POST"),
+    ("/users/me", "DELETE"),
     ("/auth/login", "POST"),
     ("/auth/refresh", "POST"),
 }
