@@ -12,6 +12,7 @@ from app.domain.exceptions import (
     InvalidNameError,
     InvalidUsernameError,
     UserNotFoundError,
+    UsernameAlreadyExistsError,
     WeakPasswordError,
 )
 from app.domain.user import User
@@ -28,6 +29,13 @@ class UserResponse(BaseModel):
     access_level: list[str]
     is_active: bool
     created_at: datetime
+
+
+class UserUpdate(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    username: str | None = None
 
 
 class UserCreate(BaseModel):
@@ -81,6 +89,54 @@ def get_me(
     except UserNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    return to_user_response(user)
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    status_code=200,
+    responses={
+        401: {"description": "Token ausente, inválido ou expirado."},
+        404: {"description": "Usuário não encontrado."},
+        409: {"description": "Email ou username já cadastrado."},
+        422: {"description": "Dados inválidos (email, username ou nome)."},
+    },
+    description=(
+        "Atualiza o perfil do usuário autenticado.\n\n"
+        "Requer `Authorization: Bearer <access_token>` no header. "
+        "Todos os campos são opcionais — apenas os informados são alterados."
+    ),
+)
+def update_me(
+    payload: UserUpdate,
+    user_id: Annotated[str, Depends(get_current_user)],
+    user_service: Annotated[UserService, Depends(get_user_service)],
+) -> UserResponse:
+    """Atualiza campos do perfil do usuário autenticado."""
+    try:
+        user = user_service.update_profile(
+            user_id=user_id,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
+            email=payload.email,
+            username=payload.username,
+        )
+    except UserNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except (EmailAlreadyExistsError, UsernameAlreadyExistsError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+    except (InvalidEmailError, InvalidUsernameError, InvalidNameError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
     return to_user_response(user)

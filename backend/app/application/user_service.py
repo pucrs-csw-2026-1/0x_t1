@@ -4,6 +4,7 @@ from app.domain.exceptions import (
     EmailAlreadyExistsError,
     InvalidPaginationError,
     UserNotFoundError,
+    UsernameAlreadyExistsError,
 )
 from app.domain.user import (
     Email,
@@ -102,6 +103,47 @@ class UserService:
 
         saved = self._user_repo.save(user)
         return saved
+
+    def update_profile(
+        self,
+        user_id: str,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        email: str | None = None,
+        username: str | None = None,
+    ) -> User:
+        """Atualiza campos do perfil do próprio usuário.
+
+        Raises:
+            UserNotFoundError: se o usuário não for encontrado.
+            EmailAlreadyExistsError: se o novo email já estiver em uso.
+            UsernameAlreadyExistsError: se o novo username já estiver em uso.
+            InvalidEmailError, InvalidUsernameError, InvalidNameError:
+                propagadas do domínio.
+        """
+        user = self.get_user_by_id(user_id)
+
+        if email is not None:
+            email_vo = Email(email)
+            existing = self._user_repo.find_by_email(email_vo)
+            if existing is not None and existing.id != user_id:
+                raise EmailAlreadyExistsError(email)
+            user.change_email(email_vo)
+
+        if username is not None:
+            username_vo = Username(username)
+            existing = self._user_repo.find_by_username(username_vo)
+            if existing is not None and existing.id != user_id:
+                raise UsernameAlreadyExistsError(username)
+            user.change_username(username_vo)
+
+        if first_name is not None or last_name is not None:
+            user.change_name(
+                first_name if first_name is not None else user.first_name,
+                last_name if last_name is not None else user.last_name,
+            )
+
+        return self._user_repo.save(user)
 
     def deactivate(self, user_id: str) -> User:
         """Desativa um usuário, revogando todos os seus refresh tokens (idempotente).

@@ -20,8 +20,10 @@ from app.domain.access_level import AccessLevel
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
     InvalidEmailError,
+    InvalidNameError,
     InvalidUsernameError,
     UserNotFoundError,
+    UsernameAlreadyExistsError,
     WeakPasswordError,
 )
 from app.domain.user import User
@@ -589,3 +591,280 @@ class TestUserRouterDeactivate:
         app.dependency_overrides.clear()
 
         assert response.status_code == 204
+
+
+class TestUserRouterUpdateProfile:
+    """Testes do endpoint PATCH /users/me (US-15)."""
+
+    # CT-15.R01 (CA-01): dados válidos retornam 200 com perfil atualizado
+    def test_patch_me_dados_validos_retorna_200(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.return_value = valid_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"first_name": "Joana"})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == valid_user.id
+        assert "password" not in data
+        assert "hashed_password" not in data
+        user_service_mock.update_profile.assert_called_once_with(
+            user_id=valid_user.id,
+            first_name="Joana",
+            last_name=None,
+            email=None,
+            username=None,
+        )
+
+    # CT-15.R02 (CA-07): sem token retorna 401
+    def test_patch_me_sem_token_retorna_401(
+        self,
+        client: TestClient,
+    ) -> None:
+        response = client.patch("/users/me", json={"first_name": "Joana"})
+
+        assert response.status_code == 401
+
+    # CT-15.R03 (CA-03): email duplicado retorna 409
+    def test_patch_me_email_duplicado_retorna_409(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.side_effect = EmailAlreadyExistsError(
+            "outro@example.com"
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"email": "outro@example.com"})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 409
+        assert "outro@example.com" in response.json()["detail"]
+
+    # CT-15.R04 (CA-04): username duplicado retorna 409
+    def test_patch_me_username_duplicado_retorna_409(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.side_effect = UsernameAlreadyExistsError(
+            "outro.usuario"
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"username": "outro.usuario"})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 409
+        assert "outro.usuario" in response.json()["detail"]
+
+    # CT-15.R05 (CA-05): email inválido retorna 422
+    def test_patch_me_email_invalido_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.side_effect = InvalidEmailError("nao-e-email")
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"email": "nao-e-email"})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422
+
+    # CT-15.R06 (CA-06): username inválido retorna 422
+    def test_patch_me_username_invalido_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.side_effect = InvalidUsernameError(
+            "username deve ter ao menos 8 caracteres"
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"username": "curto"})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422
+
+    # CT-15.R07 (CA-09): nome inválido retorna 422
+    def test_patch_me_nome_invalido_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.side_effect = InvalidNameError(
+            "first_name não pode ser vazio"
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"first_name": "   "})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422
+
+    # CT-15.R08 (CA-08): senha não é aceita no payload — campo ignorado pelo schema
+    def test_patch_me_senha_nao_aparece_no_schema(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.return_value = valid_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch(
+            "/users/me",
+            json={"first_name": "Joana", "password": "NovaS3nh@!"},
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        call_kwargs = user_service_mock.update_profile.call_args.kwargs
+        assert "password" not in call_kwargs
+
+    # CT-15.R09 (CA-08 / CA-09): access_level e is_active ignorados pelo schema
+    def test_patch_me_access_level_e_is_active_nao_aceitos(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.return_value = valid_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch(
+            "/users/me",
+            json={"access_level": ["admin-uuid"], "is_active": False},
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        call_kwargs = user_service_mock.update_profile.call_args.kwargs
+        assert "access_level" not in call_kwargs
+        assert "is_active" not in call_kwargs
+
+    # CT-15.R10 (CA-10): payload vazio é aceito — chama update_profile com todos None
+    def test_patch_me_payload_vazio_retorna_200(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.return_value = valid_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        user_service_mock.update_profile.assert_called_once_with(
+            user_id=valid_user.id,
+            first_name=None,
+            last_name=None,
+            email=None,
+            username=None,
+        )
+
+    # CT-15.R11: usuário não encontrado retorna 404
+    def test_patch_me_usuario_inexistente_retorna_404(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.side_effect = UserNotFoundError(valid_user.id)
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"first_name": "Joana"})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 404
+        assert valid_user.id in response.json()["detail"]
+
+    # CT-15.R12 (CA-10 / integração real): atualização parcial via service + fakes
+    def test_patch_me_integracao_real_parcial(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        fake_user_repo = FakeUserRepository()
+        fake_access_level_repo = FakeAccessLevelRepository(
+            levels=[
+                AccessLevel(id=ADMIN_UUID, title="admin"),
+                AccessLevel(id=USER_UUID, title="user"),
+            ]
+        )
+        fake_user_repo.save(valid_user)
+        service = UserService(
+            user_repo=fake_user_repo,
+            access_level_repo=fake_access_level_repo,
+        )
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: service
+
+        response = client.patch("/users/me", json={"first_name": "Joana"})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["first_name"] == "Joana"
+        assert data["last_name"] == valid_user.last_name
+        assert data["email"] == valid_user.email.value
+        assert data["username"] == valid_user.username.value
