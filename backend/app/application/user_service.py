@@ -15,7 +15,7 @@ from app.domain.user import (
 from app.ports.access_level_repository import AccessLevelRepository
 from app.ports.password_hasher import PasswordHasher
 from app.ports.refresh_token_repository import RefreshTokenRepository
-from app.ports.user_repository import UserRepository
+from app.ports.user_repository import UserPage, UserRepository
 
 
 class UserService:
@@ -27,6 +27,7 @@ class UserService:
         refresh_token_repo: RefreshTokenRepository | None = None,
     ) -> None:
         self._user_repo = user_repo
+        self._access_level_repo = access_level_repo
         self._hasher: PasswordHasher = password_hasher or BcryptPasswordHasher()
         self._refresh_token_repo = refresh_token_repo
 

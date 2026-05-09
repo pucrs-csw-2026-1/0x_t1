@@ -122,7 +122,7 @@ def register_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    return _to_response(user)
+    return to_user_response(user)
 
 
 @router.delete(
