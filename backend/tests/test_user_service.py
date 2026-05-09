@@ -16,8 +16,8 @@ from app.domain.exceptions import (
     InvalidNameError,
     InvalidPaginationError,
     InvalidUsernameError,
-    UserNotFoundError,
     UsernameAlreadyExistsError,
+    UserNotFoundError,
     WeakPasswordError,
 )
 from app.domain.user import Email, HashedPassword, User, Username
@@ -673,7 +673,7 @@ class TestUserServiceUpdateProfile:
         with pytest.raises(EmailAlreadyExistsError):
             service.update_profile(saved_user.id, email="outro@example.com")
 
-    # CT-15.8 (CA-04): username duplicado (de outro usuário) lança UsernameAlreadyExistsError
+    # CT-15.8 (CA-04): username duplicado lança UsernameAlreadyExistsError
     def test_username_duplicado_lanca_excecao(
         self,
         service: UserService,
@@ -751,9 +751,7 @@ class TestUserServiceUpdateProfile:
         service: UserService,
         saved_user: User,
     ) -> None:
-        result = service.update_profile(
-            saved_user.id, email=saved_user.email.value
-        )
+        result = service.update_profile(saved_user.id, email=saved_user.email.value)
 
         assert result.email == saved_user.email
 

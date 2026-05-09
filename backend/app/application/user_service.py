@@ -3,8 +3,8 @@ from app.domain.exceptions import (
     AccessLevelNotFoundError,
     EmailAlreadyExistsError,
     InvalidPaginationError,
-    UserNotFoundError,
     UsernameAlreadyExistsError,
+    UserNotFoundError,
 )
 from app.domain.user import (
     Email,

@@ -11,8 +11,8 @@ from app.domain.exceptions import (
     InvalidEmailError,
     InvalidNameError,
     InvalidUsernameError,
-    UserNotFoundError,
     UsernameAlreadyExistsError,
+    UserNotFoundError,
     WeakPasswordError,
 )
 from app.domain.user import User
