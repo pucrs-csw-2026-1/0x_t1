@@ -28,4 +28,3 @@ class InMemoryRefreshTokenRepository(RefreshTokenRepository):
         if user_id not in self._user_tokens:
             self._user_tokens[user_id] = set()
         self._user_tokens[user_id].add(token)
-

@@ -125,4 +125,3 @@ class UserService:
         # Persiste a alteração
         saved = self._user_repo.save(user)
         return saved
-

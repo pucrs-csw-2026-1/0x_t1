@@ -593,4 +593,3 @@ class TestUserRouterDeactivate:
         app.dependency_overrides.clear()
 
         assert response.status_code == 204
-

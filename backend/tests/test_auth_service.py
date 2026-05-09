@@ -506,8 +506,9 @@ class TestAuthServiceInactiveUser:
         password_hasher_mock.verify.return_value = True
 
         with pytest.raises(InvalidCredentialsError) as exc_info:
-            auth_service.login(email=valid_user.email.value,
-                               password="SenhaCorreta@123")
+            auth_service.login(
+                email=valid_user.email.value, password="SenhaCorreta@123"
+            )
 
         # Não deve tentar gerar tokens
         token_provider_mock.generate_access_token.assert_not_called()
@@ -534,16 +535,18 @@ class TestAuthServiceInactiveUser:
         # Cenário 1: usuário inativo
         user_repository_mock.find_by_email.return_value = valid_user
         try:
-            auth_service.login(email=valid_user.email.value,
-                               password="SenhaCorreta@123")
+            auth_service.login(
+                email=valid_user.email.value, password="SenhaCorreta@123"
+            )
         except InvalidCredentialsError as exc_inactive:
             msg_inactive = str(exc_inactive)
 
         # Cenário 2: usuário inexistente
         user_repository_mock.find_by_email.return_value = None
         try:
-            auth_service.login(email="naoexiste@example.com",
-                               password="SenhaCorreta@123")
+            auth_service.login(
+                email="naoexiste@example.com", password="SenhaCorreta@123"
+            )
         except InvalidCredentialsError as exc_notfound:
             msg_notfound = str(exc_notfound)
 
@@ -597,9 +600,9 @@ class TestAuthServiceInactiveUser:
         token_provider_mock.generate_access_token.return_value = "access.jwt"
         token_provider_mock.generate_refresh_token.return_value = "refresh.jwt"
 
-        result = auth_service.login(email=valid_user.email.value,
-                                    password="SenhaCorreta@123")
+        result = auth_service.login(
+            email=valid_user.email.value, password="SenhaCorreta@123"
+        )
 
         assert result["access_token"] == "access.jwt"
         assert result["refresh_token"] == "refresh.jwt"
-
