@@ -4,6 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.adapters.in_memory_refresh_token_repository import (
+    InMemoryRefreshTokenRepository,
+)
 from app.application.user_service import UserService
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
@@ -194,3 +197,111 @@ class TestUserServiceRegister:
                 email="tst@example.com",
                 password="S3nh@Forte!",
             )
+
+
+class TestUserServiceDeactivate:
+    """Testes para UserService.deactivate() (US-17)."""
+
+    # CT-01: Desativação bem-sucedida marca is_active=False
+    def test_deactivate_marks_inactive(
+        self, fake_repo: FakeUserRepository, valid_user: User
+    ) -> None:
+        fake_repo.save(valid_user)
+        service = UserService(user_repo=fake_repo)
+
+        deactivated = service.deactivate(valid_user.id)
+
+        assert deactivated.is_active is False
+        # Persisted
+        fetched = fake_repo.find_by_id(valid_user.id)
+        assert fetched is not None
+        assert fetched.is_active is False
+
+    # CT-02: Desativação atualiza updated_at
+    def test_deactivate_updates_updated_at(
+        self, fake_repo: FakeUserRepository, valid_user: User
+    ) -> None:
+        original_updated_at = valid_user.updated_at
+        fake_repo.save(valid_user)
+        service = UserService(user_repo=fake_repo)
+
+        deactivated = service.deactivate(valid_user.id)
+
+        assert deactivated.updated_at > original_updated_at
+
+    # CT-03: Registro físico é preservado (soft delete)
+    def test_deactivate_preserves_record(
+        self, fake_repo: FakeUserRepository, valid_user: User
+    ) -> None:
+        fake_repo.save(valid_user)
+        service = UserService(user_repo=fake_repo)
+
+        service.deactivate(valid_user.id)
+
+        # Registro ainda existe no repositório
+        fetched = fake_repo.find_by_id(valid_user.id)
+        assert fetched is not None
+        assert fetched.id == valid_user.id
+        assert fetched.email == valid_user.email
+        assert fetched.username == valid_user.username
+
+    # CT-04: Idempotência - chamar duas vezes não falha
+    def test_deactivate_is_idempotent(
+        self, fake_repo: FakeUserRepository, valid_user: User
+    ) -> None:
+        fake_repo.save(valid_user)
+        service = UserService(user_repo=fake_repo)
+
+        result1 = service.deactivate(valid_user.id)
+        result2 = service.deactivate(valid_user.id)
+
+        assert result1.is_active is False
+        assert result2.is_active is False
+
+    # CT-05: Revoga todos os refresh tokens do usuário
+    def test_deactivate_revokes_all_refresh_tokens(
+        self, fake_repo: FakeUserRepository, valid_user: User
+    ) -> None:
+        fake_repo.save(valid_user)
+        refresh_repo = InMemoryRefreshTokenRepository()
+
+        # Simula tokens criados para este usuário
+        refresh_repo.register_token_for_user(valid_user.id, "token1")
+        refresh_repo.register_token_for_user(valid_user.id, "token2")
+
+        service = UserService(user_repo=fake_repo, refresh_token_repo=refresh_repo)
+
+        service.deactivate(valid_user.id)
+
+        # Todos os tokens foram revogados
+        assert refresh_repo.is_revoked("token1") is True
+        assert refresh_repo.is_revoked("token2") is True
+
+    # CT-06: Lança exceção se usuário não existe
+    def test_deactivate_user_not_found_raises(
+        self, fake_repo: FakeUserRepository
+    ) -> None:
+        service = UserService(user_repo=fake_repo)
+
+        with pytest.raises(UserNotFoundError):
+            service.deactivate("id-que-nao-existe")
+
+    # CT-07: Transição de estado - ativo -> inativo
+    def test_deactivate_state_transition(
+        self, fake_repo: FakeUserRepository, valid_user: User
+    ) -> None:
+        fake_repo.save(valid_user)
+        service = UserService(user_repo=fake_repo)
+
+        # Inicialmente ativo
+        assert valid_user.is_active is True
+
+        # Após desativação
+        deactivated = service.deactivate(valid_user.id)
+        assert deactivated.is_active is False
+
+        # Fetch confirmação
+        fetched = fake_repo.find_by_id(valid_user.id)
+        assert fetched is not None
+        assert fetched.is_active is False
+

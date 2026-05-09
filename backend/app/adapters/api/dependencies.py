@@ -82,7 +82,10 @@ def require_scope(required_scope: str) -> Callable[..., str]:
 def get_user_service() -> UserService:
     """Constrói e retorna uma instância de UserService."""
     repo = DynamoUserRepository(table_name=settings.dynamodb_table_users)
-    return UserService(user_repo=repo)
+    return UserService(
+        user_repo=repo,
+        refresh_token_repo=_refresh_token_repository,
+    )
 
 
 def get_auth_service() -> AuthService:

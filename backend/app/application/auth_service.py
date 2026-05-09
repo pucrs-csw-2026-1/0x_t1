@@ -34,6 +34,8 @@ class AuthService:
             InvalidCredentialsError: se email malformado, inexistente, ou senha
                 incorreta. Email malformado é tratado como credencial inválida
                 para não vazar informação sobre a base de usuários.
+                Também retorna InvalidCredentialsError se o usuário está inativo
+                (não revela que a conta existe mas está desativada).
         """
         try:
             email_vo = Email(email)
@@ -42,6 +44,10 @@ class AuthService:
 
         user = self._user_repository.find_by_email(email_vo)
         if user is None:
+            raise InvalidCredentialsError()
+
+        # Rejeita login de usuários inativos (não revela que a conta existe)
+        if not user.is_active:
             raise InvalidCredentialsError()
 
         if not self._password_hasher.verify(password, user.hashed_password.value):

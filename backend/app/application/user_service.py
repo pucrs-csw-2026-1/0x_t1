@@ -13,6 +13,7 @@ from app.domain.user import (
     validate_raw_password,
 )
 from app.ports.password_hasher import PasswordHasher
+from app.ports.refresh_token_repository import RefreshTokenRepository
 from app.ports.user_repository import UserRepository
 
 
@@ -21,9 +22,11 @@ class UserService:
         self,
         user_repo: UserRepository,
         password_hasher: PasswordHasher | None = None,
+        refresh_token_repo: RefreshTokenRepository | None = None,
     ) -> None:
         self._user_repo = user_repo
         self._hasher: PasswordHasher = password_hasher or BcryptPasswordHasher()
+        self._refresh_token_repo = refresh_token_repo
 
     def get_user_by_id(self, user_id: str) -> User:
         """Busca e retorna o usuário pelo ID.
@@ -80,3 +83,27 @@ class UserService:
 
         saved = self._user_repo.save(user)
         return saved
+
+    def deactivate(self, user_id: str) -> User:
+        """Desativa um usuário, revogando todos os seus refresh tokens (idempotente).
+
+        Marks is_active=False e atualiza updated_at. O registro físico é preservado
+        (soft delete).
+
+        Raises:
+            UserNotFoundError: se o usuário não for encontrado.
+        """
+        user = self.get_user_by_id(user_id)
+
+        # Revoga todos os refresh tokens ativos do usuário (se repositório foi injetado)
+        if self._refresh_token_repo is not None:
+            self._refresh_token_repo.revoke_all_by_user(user_id)
+
+        # Marca como inativo
+        # (idempotente: se já estava inativo, apenas atualiza updated_at)
+        user.deactivate()
+
+        # Persiste a alteração
+        saved = self._user_repo.save(user)
+        return saved
+
