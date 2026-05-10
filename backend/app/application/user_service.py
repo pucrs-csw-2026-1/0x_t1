@@ -211,10 +211,19 @@ class UserService:
         return self._user_repo.save(user)
 
     def deactivate(self, user_id: str) -> User:
-        """Desativa um usuário, revogando todos os seus refresh tokens (idempotente).
+        """Desativa um usuário (soft delete). Bloqueia logins e refreshes.
 
-        Marks is_active=False e atualiza updated_at. O registro físico é preservado
-        (soft delete).
+        Marca is_active=False e atualiza updated_at (idempotente). O registro
+        físico é preservado.
+
+        A chamada a revoke_all_by_user é mantida para compatibilidade com o
+        contrato do RefreshTokenRepository, mas o adapter atual
+        (InMemoryRefreshTokenRepository) não rastreia tokens emitidos no
+        fluxo de login, então a revogação explícita é no-op. O bloqueio
+        efetivo da sessão é feito em dois pontos:
+        - AuthService.login rejeita credenciais de usuários inativos;
+        - AuthService.refresh verifica is_active antes de emitir novo
+          access token (impede refresh de tokens emitidos pré-deactivate).
 
         Raises:
             UserNotFoundError: se o usuário não for encontrado.

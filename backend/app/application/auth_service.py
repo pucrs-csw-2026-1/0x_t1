@@ -79,10 +79,15 @@ class AuthService:
     def refresh(self, refresh_token: str) -> str:
         """Renova o access token a partir de um refresh token válido.
 
-        Verifica revogação antes de decodificar.
+        Verifica revogação explícita, decodifica o JWT e confirma que o
+        usuário associado ao token ainda existe e está ativo. Usuários
+        desativados via DELETE /users/me ou PATCH /admin/users/{id} com
+        is_active=false têm o refresh bloqueado mesmo que o JWT ainda
+        não tenha expirado.
 
         Raises:
-            TokenRevokedError: se o refresh token foi revogado.
+            TokenRevokedError: se o refresh token foi revogado, ou se o
+                usuário associado foi desativado ou não existe mais.
         """
         # Verifica revogação primeiro (se repositório foi injetado)
         if self._refresh_repository is not None and self._refresh_repository.is_revoked(
@@ -97,6 +102,15 @@ class AuthService:
             raise TokenRevokedError()
 
         user_id = payload["sub"]
+
+        # Bloqueia refresh de contas desativadas. Como o JWT é stateless e
+        # InMemoryRefreshTokenRepository não rastreia tokens por usuário no
+        # login, esta verificação é o que conecta o estado da conta
+        # (is_active) ao ciclo de vida do refresh token.
+        user = self._user_repository.find_by_id(user_id)
+        if user is None or not user.is_active:
+            raise TokenRevokedError()
+
         scopes = payload.get("scopes", [])
         return self._token_provider.generate_access_token(
             user_id=user_id,
