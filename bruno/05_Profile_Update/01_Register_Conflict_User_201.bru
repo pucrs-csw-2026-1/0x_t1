@@ -1,0 +1,35 @@
+meta {
+  name: 01 Register Conflict User (201)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Conflito",
+    "last_name": "User",
+    "username": "conflito.user",
+    "email": "conflito@example.com",
+    "password": "Senha@123"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  Pre-cadastra um segundo usuario para o teste 05 (PATCH email duplicado).
+  Idempotente: se ja existir, retorna 409 — re-rodar nao quebra o flow,
+  basta ajustar a expectativa para 409 OU rodar so na primeira vez.
+
+  Se voce ja rodou esta collection antes, esse request retornara 409
+  (email ja cadastrado). E aceitavel — o usuario "conflito" continua
+  no banco para o teste 05 funcionar.
+}

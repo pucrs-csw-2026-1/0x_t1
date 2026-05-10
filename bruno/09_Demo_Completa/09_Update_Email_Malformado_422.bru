@@ -1,0 +1,30 @@
+meta {
+  name: 09 Update Email Malformado (422)
+  type: http
+  seq: 9
+}
+
+patch {
+  url: {{baseUrl}}/users/me
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{demo_access_token}}
+}
+
+body:json {
+  {
+    "email": "nao-eh-email"
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  Capitulo 3 - Tratamento de excecao: email malformado no PATCH
+  e validado pelo dominio (InvalidEmailError) e mapeado para 422.
+}

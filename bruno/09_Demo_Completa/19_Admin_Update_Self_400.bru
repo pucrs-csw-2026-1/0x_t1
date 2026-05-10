@@ -1,0 +1,34 @@
+meta {
+  name: 19 Admin Update Self (400)
+  type: http
+  seq: 19
+}
+
+patch {
+  url: {{baseUrl}}/admin/users/{{seed_admin_user_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{seed_admin_access_token}}
+}
+
+body:json {
+  {
+    "is_active": false
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.detail: contains si mesmo
+}
+
+docs {
+  Capitulo 4 - Tratamento de excecao: admin nao pode alterar a
+  si mesmo (defesa anti-lockout). admin_id == target_user_id
+  no service levanta ValueError -> 400.
+
+  Pre-condicao: request 13 capturou seed_admin_user_id.
+}

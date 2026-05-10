@@ -1,0 +1,27 @@
+meta {
+  name: 07 Login Senha Errada (401)
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: {{demo_email}}
+  password: SenhaErrada@999
+}
+
+assert {
+  res.status: eq 401
+  res.body.detail: contains Credenciais
+}
+
+docs {
+  Capitulo 2 - Tratamento de excecao: credenciais invalidas
+  retornam 401 generico (sem revelar se foi email ou senha
+  que esta errado, defesa contra enumeracao).
+}

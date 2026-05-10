@@ -1,0 +1,40 @@
+meta {
+  name: 05 Admin Update User (200)
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/admin/users/{{target_user_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_access_token}}
+}
+
+body:json {
+  {
+    "access_level": ["{{user_uuid}}", "{{admin_uuid}}"]
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq {{target_user_id}}
+}
+
+tests {
+  test("US-18: PATCH retorna access_level atualizado com 2 UUIDs", function() {
+    expect(res.body.access_level).to.be.an("array").with.lengthOf(2);
+    expect(res.body.access_level).to.include(bru.getVar("admin_uuid"));
+    expect(res.body.access_level).to.include(bru.getVar("user_uuid"));
+  });
+}
+
+docs {
+  Promove o usuario alvo a admin via API (substitui o passo manual
+  de update-item no DDB documentado em 03_Auth_Access/04). E um
+  bonus operacional do US-18 mencionado no README.
+}

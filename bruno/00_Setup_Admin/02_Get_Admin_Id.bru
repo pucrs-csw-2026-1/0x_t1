@@ -1,0 +1,43 @@
+meta {
+  name: 02 Get Admin Id (200)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/users/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_access_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.email: eq {{seed_admin_email}}
+}
+
+tests {
+  test("admin tem 2 access levels (user + admin)", function() {
+    expect(res.body.access_level).to.be.an("array").with.lengthOf(2);
+  });
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("admin_user_id", res.body.id);
+  }
+}
+
+docs {
+  Captura o id do admin root via GET /users/me — necessario para o
+  request 08_Admin_User_Management/08_Admin_Delete_Self_400 (cenario
+  "admin nao pode desativar a si mesmo", admin_id == target_user_id).
+
+  O endpoint /auth/login nao retorna o user_id no payload, daí a
+  necessidade desta segunda chamada de setup.
+
+  Pre-condicao: request 01 deste folder ja populou admin_access_token.
+}

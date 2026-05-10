@@ -1,0 +1,39 @@
+meta {
+  name: 01 Register Demo User (201)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "{{demo_first_name}}",
+    "last_name": "{{demo_last_name}}",
+    "username": "{{demo_username}}",
+    "email": "{{demo_email}}",
+    "password": "{{demo_password}}"
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.email: eq {{demo_email}}
+  res.body.is_active: eq true
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setVar("demo_user_id", res.body.id);
+  }
+}
+
+docs {
+  Capitulo 1 - Cadastro publico (US-04 Cadastro de Conta).
+  Cria o usuario demo que sera o protagonista do flow ate a
+  desativacao no request 21.
+}

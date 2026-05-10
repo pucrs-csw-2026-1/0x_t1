@@ -1,0 +1,31 @@
+meta {
+  name: 05 Nova Senha Igual A Atual (400)
+  type: http
+  seq: 5
+}
+
+put {
+  url: {{baseUrl}}/users/me/password
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "current_password": "{{password}}",
+    "new_password": "{{password}}"
+  }
+}
+
+assert {
+  res.status: eq 400
+}
+
+docs {
+  US-16: nova senha igual a atual -> SamePasswordError -> 400.
+  Forca rotacao real ao inves de no-op silencioso.
+}

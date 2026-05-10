@@ -1,0 +1,25 @@
+meta {
+  name: 06 Admin Update Inexistente (404)
+  type: http
+  seq: 6
+}
+
+patch {
+  url: {{baseUrl}}/admin/users/00000000-0000-0000-0000-000000000000
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_access_token}}
+}
+
+body:json {
+  {
+    "is_active": false
+  }
+}
+
+assert {
+  res.status: eq 404
+}

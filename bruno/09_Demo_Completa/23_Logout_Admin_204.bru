@@ -1,0 +1,40 @@
+meta {
+  name: 23 Logout Admin (204)
+  type: http
+  seq: 23
+}
+
+post {
+  url: {{baseUrl}}/auth/logout
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{seed_admin_access_token}}
+}
+
+body:json {
+  {
+    "refresh_token": "{{demo_refresh_token}}"
+  }
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Capitulo 5 - Logout encerra a sessao revogando o refresh token.
+
+  IMPORTANTE: o demo_refresh_token aqui ja foi revogado pelo
+  request 21 (deactivate revoga todos os refresh tokens ativos
+  do usuario). Mesmo assim o /auth/logout aceita - eh idempotente
+  do ponto de vista do dominio (revogar token ja revogado eh
+  no-op). O 204 confirma que o endpoint foi exercido com auth
+  admin valida.
+
+  Para um logout "limpo" do proprio admin, substituiria pelo
+  refresh_token do admin - mas o demo_refresh_token ja em hand
+  serve pra fechar o flow sem precisar de mais 1 login.
+}

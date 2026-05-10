@@ -1,0 +1,41 @@
+meta {
+  name: 01 Login Admin (200)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: {{seed_admin_email}}
+  password: {{seed_admin_password}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.access_token: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("admin_access_token", res.body.access_token);
+  }
+}
+
+docs {
+  Setup admin para as pastas 03/04/08 — autentica como o admin root
+  seedado pelo lifespan (admin@local.dev) e popula admin_access_token.
+
+  Pre-requisitos:
+  - App rodando em app_env=development (seed admin existe).
+  - Catalogo access_level provisionado (terraform apply).
+
+  Apos rodar este request e o 02, os requests admin em 03/04/08
+  funcionam diretamente, sem precisar de setup manual via DDB.
+
+  Rode novamente sempre que o token expirar (default: 30min).
+}

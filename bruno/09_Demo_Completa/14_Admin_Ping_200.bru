@@ -1,0 +1,32 @@
+meta {
+  name: 14 Admin Ping (200)
+  type: http
+  seq: 14
+}
+
+get {
+  url: {{baseUrl}}/admin/ping
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{seed_admin_access_token}}
+}
+
+assert {
+  res.status: eq 200
+}
+
+tests {
+  test("admin ping retorna user_id e status", function() {
+    expect(res.body).to.have.property("user_id");
+    expect(res.body.status).to.equal("ok");
+  });
+}
+
+docs {
+  Capitulo 4 - US-13 demonstracao do scope gate admin.
+  Endpoint /admin/ping so responde quando o JWT carrega scope
+  "admin" no payload.
+}
