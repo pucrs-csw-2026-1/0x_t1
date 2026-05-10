@@ -1,11 +1,19 @@
+from __future__ import annotations
+
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import boto3
-from mypy_boto3_dynamodb.service_resource import Table
 
 from app.domain.access_level import AccessLevel
 from app.ports.access_level_repository import AccessLevelRepository
+
+if TYPE_CHECKING:
+    # Type stubs do boto3 — disponíveis em requirements-dev.txt
+    # (mypy-boto3-dynamodb) mas não em requirements.txt. Carregar apenas
+    # durante type-check evita ModuleNotFoundError em runtime quando a
+    # aplicação roda em container com apenas as deps de produção.
+    from mypy_boto3_dynamodb.service_resource import Table
 
 
 class DynamoAccessLevelRepository(AccessLevelRepository):

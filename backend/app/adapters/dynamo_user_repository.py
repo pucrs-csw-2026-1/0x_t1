@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import boto3
 from botocore.exceptions import ClientError
-from mypy_boto3_dynamodb.service_resource import Table
 
 from app.domain.user import Email, HashedPassword, User, Username
 from app.ports.user_repository import UserPage, UserRepository
+
+if TYPE_CHECKING:
+    # Type stubs do boto3 — disponíveis em requirements-dev.txt
+    # (mypy-boto3-dynamodb) mas não em requirements.txt. Carregar apenas
+    # durante type-check evita ModuleNotFoundError em runtime quando a
+    # aplicação roda em container com apenas as deps de produção.
+    from mypy_boto3_dynamodb.service_resource import Table
 
 
 class DynamoUserRepository(UserRepository):
