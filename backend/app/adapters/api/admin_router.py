@@ -3,7 +3,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.adapters.api.dependencies import get_current_user, get_user_service
 from app.adapters.api.user_router import UserResponse, to_user_response
@@ -18,13 +18,36 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 class UserListResponse(BaseModel):
-    items: list[UserResponse]
-    next_cursor: str | None
+    items: list[UserResponse] = Field(..., description="Página atual de usuários.")
+    next_cursor: str | None = Field(
+        ...,
+        description="Cursor para a próxima página. None indica fim da lista.",
+        examples=["bd0babc3-bd93-443d-aefb-5193f5e1f08c"],
+    )
 
 
 class AdminUserUpdate(BaseModel):
-    access_level: list[str] | None = None
-    is_active: bool | None = None
+    access_level: list[str] | None = Field(
+        None,
+        description=(
+            "UUIDs do catálogo de access_level. Quando informado, "
+            "substitui o conjunto atual do usuário."
+        ),
+        examples=[
+            [
+                "9e556479-7003-5916-9cd6-33f4227cec9b",
+                "bace0701-15e3-5144-97c5-47487d543032",
+            ]
+        ],
+    )
+    is_active: bool | None = Field(
+        None,
+        description=(
+            "Status de ativação. Quando informado, ativa (true) "
+            "ou desativa (false) o usuário."
+        ),
+        examples=[False],
+    )
 
 
 @router.get(

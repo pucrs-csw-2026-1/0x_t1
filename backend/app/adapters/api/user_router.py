@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.adapters.api.dependencies import get_current_user, get_user_service
 from app.application.user_service import UserService
 from app.domain.exceptions import (
+    AccessLevelNotFoundError,
     EmailAlreadyExistsError,
     InvalidCredentialsError,
     InvalidEmailError,
@@ -23,34 +24,89 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 class UserResponse(BaseModel):
-    id: str
-    first_name: str
-    last_name: str
-    username: str
-    email: str
-    access_level: list[str]
-    is_active: bool
-    created_at: datetime
+    id: str = Field(
+        ...,
+        description="ID único do usuário.",
+        examples=["bd0babc3-bd93-443d-aefb-5193f5e1f08c"],
+    )
+    first_name: str = Field(..., description="Nome do usuário.", examples=["Juca"])
+    last_name: str = Field(..., description="Sobrenome do usuário.", examples=["Bala"])
+    username: str = Field(..., description="Nome de usuário.", examples=["juca.bala"])
+    email: str = Field(
+        ..., description="Endereço de email do usuário.", examples=["juca@email.com"]
+    )
+    access_level: list[str] = Field(
+        ...,
+        description="Níveis de acesso do usuário.",
+        examples=[["9e556479-7003-5916-9cd6-33f4227cec9b"]],
+    )
+    is_active: bool = Field(
+        ..., description="Indica se o usuário está ativo.", examples=[True]
+    )
+    created_at: datetime = Field(
+        ...,
+        description="Data de criação do usuário.",
+        examples=["2026-05-08T04:55:07.913746Z"],
+    )
 
 
 class UserUpdate(BaseModel):
-    first_name: str | None = None
-    last_name: str | None = None
-    email: str | None = None
-    username: str | None = None
+    first_name: str | None = Field(
+        None, description="Novo primeiro nome.", examples=["Juca"]
+    )
+    last_name: str | None = Field(
+        None, description="Novo sobrenome.", examples=["Bala"]
+    )
+    email: str | None = Field(
+        None, description="Novo email.", examples=["juca@email.com"]
+    )
+    username: str | None = Field(
+        None, description="Novo username.", examples=["juca.bala"]
+    )
 
 
 class PasswordChangeRequest(BaseModel):
-    current_password: str
-    new_password: str
+    current_password: str = Field(
+        ..., description="Senha atual do usuário.", examples=["Senha@123"]
+    )
+    new_password: str = Field(
+        ...,
+        description=(
+            "Nova senha. Deve ter ao menos 8 caracteres com "
+            "maiúscula, minúscula, número e caractere especial."
+        ),
+        examples=["NovaSenha@456"],
+    )
 
 
 class UserCreate(BaseModel):
-    first_name: str
-    last_name: str
-    username: str
-    email: str
-    password: str
+    first_name: str = Field(
+        ...,
+        description="Nome do usuário. Deve conter pelo menos 2 caracteres.",
+        examples=["Juca"],
+    )
+    last_name: str = Field(
+        ...,
+        description="Sobrenome do usuário. Deve conter pelo menos 2 caracteres.",
+        examples=["Bala"],
+    )
+    username: str = Field(
+        ...,
+        description="Nome de usuário. Deve conter entre 3 e 20 caracteres.",
+        examples=["juca.bala"],
+    )
+    email: str = Field(
+        ..., description="Endereço de email do usuário.", examples=["juca@email.com"]
+    )
+    password: str = Field(
+        ...,
+        description=(
+            "Senha do usuário. Deve conter pelo menos 8 caracteres "
+            "com pelo menos uma letra maiúscula, uma letra minúscula, "
+            "um número e um caractere especial."
+        ),
+        examples=["Senha@123"],
+    )
     access_level: list[str] | None = Field(
         default=None,
         deprecated=True,
@@ -201,8 +257,10 @@ def change_password(
     response_model=UserResponse,
     status_code=201,
     responses={
+        201: {"description": "Usuário criado com sucesso."},
         400: {"description": "Dados inválidos (email, senha, username ou nome)."},
         409: {"description": "Email já cadastrado."},
+        500: {"description": "Catálogo de níveis de acesso não provisionado."},
     },
 )
 def register_user(
@@ -231,6 +289,14 @@ def register_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        ) from exc
+    except AccessLevelNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Catálogo de níveis de acesso não provisionado. "
+                "Verifique a infraestrutura (terraform apply)."
+            ),
         ) from exc
     return to_user_response(user)
 
