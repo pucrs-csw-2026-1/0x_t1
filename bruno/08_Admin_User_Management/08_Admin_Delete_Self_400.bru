@@ -1,0 +1,30 @@
+meta {
+  name: 08 Admin Delete Self (400)
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{baseUrl}}/admin/users/{{admin_user_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_access_token}}
+}
+
+assert {
+  res.status: eq 400
+}
+
+docs {
+  US-18: admin nao pode desativar a si mesmo (evita lockout do sistema).
+  Tanto {{admin_user_id}} quanto {{admin_access_token}} pertencem ao
+  mesmo admin root (admin@local.dev, seedado pelo lifespan e logado
+  por 00_Setup_Admin/01+02). Como admin_id == target_user_id, o
+  backend rejeita com 400.
+
+  Pre-condicao: 00_Setup_Admin/02_Get_Admin_Id ja populou
+  admin_user_id.
+}

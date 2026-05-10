@@ -1,0 +1,27 @@
+meta {
+  name: 22 Login Demo Apos Deactivate (401)
+  type: http
+  seq: 22
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: {{demo_email}}
+  password: {{demo_password}}
+}
+
+assert {
+  res.status: eq 401
+}
+
+docs {
+  Capitulo 5 - Tratamento de excecao: usuario desativado nao
+  autentica. Retorna 401 generico (mesma resposta de credenciais
+  invalidas, sem revelar que a conta existe mas esta inativa).
+  Regressao do bug consertado em b298617/de5381c.
+}

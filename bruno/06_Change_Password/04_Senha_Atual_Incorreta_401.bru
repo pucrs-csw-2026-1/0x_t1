@@ -1,0 +1,32 @@
+meta {
+  name: 04 Senha Atual Incorreta (401)
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/users/me/password
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "current_password": "SenhaErrada@999",
+    "new_password": "OutraSenha@123"
+  }
+}
+
+assert {
+  res.status: eq 401
+}
+
+docs {
+  US-16: para trocar de senha, o usuario tem que reprovar a senha
+  atual (defesa em profundidade — token roubado nao basta). Senha
+  atual errada -> InvalidCredentialsError -> 401.
+}

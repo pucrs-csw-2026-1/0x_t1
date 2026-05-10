@@ -1,6 +1,6 @@
-# Guia de Contribuicao
+# Guia de Contribuição
 
-Este documento define as regras de contribuicao para o projeto **Auth Service**, seguindo o modelo **GitFlow**.
+Este documento define as regras de contribuição para o projeto **Auth Service**, seguindo o modelo **GitFlow**.
 
 ---
 
@@ -8,28 +8,30 @@ Este documento define as regras de contribuicao para o projeto **Auth Service**,
 
 ```
 main  ←  dev  ←  feature/<nome>
+   ↑
+   └── hotfix/<nome>   (correção urgente direto na main)
 ```
 
 ### Branches permanentes
 
-| Branch | Proposito |
+| Branch | Propósito |
 |---|---|
-| `main` | Codigo em producao. Recebe merges **apenas** vindos de `dev` apos aprovacao. |
-| `dev` | Branch de integracao continua. Toda nova funcionalidade e integrada aqui antes de ir para `main`. |
+| `main` | Código em produção. Recebe merges **apenas** vindos de `dev` ou `hotfix/*` após aprovação. |
+| `dev` | Branch de integração contínua. Toda nova funcionalidade é integrada aqui antes de ir para `main`. |
 
-### Branches temporarias
+### Branches temporárias
 
-| Tipo | Convencao de nome | Origem | Destino |
+| Tipo | Convenção de nome | Origem | Destino |
 |---|---|---|---|
-| Funcionalidade | `feature/<descricao-curta>` | `dev` | `dev` |
-| Correcao urgente | `hotfix/<descricao-curta>` | `main` | `main` + `dev` |
-| Release | `release/<versao>` | `dev` | `main` + `dev` |
+| Funcionalidade | `feature/<descrição-curta>` | `dev` | `dev` |
+| Correção urgente | `hotfix/<descrição-curta>` | `main` | `main` + `dev` |
+| Release | `release/<versão>` | `dev` | `main` + `dev` |
 
 ---
 
 ## Fluxo de Trabalho
 
-### 1. Atualize a branch dev local
+### 1. Atualize a branch `dev` local
 
 ```bash
 git checkout dev
@@ -42,14 +44,14 @@ git pull origin dev
 git checkout -b feature/minha-funcionalidade
 ```
 
-### 3. Desenvolva com commits atomicos e descritivos
+### 3. Desenvolva com commits atômicos e descritivos
 
 ```bash
 git add <arquivos>
 git commit -m "feat: adiciona endpoint de refresh token"
 ```
 
-### 4. Atualize a branch com as ultimas mudancas de dev
+### 4. Atualize a branch com as últimas mudanças de `dev`
 
 ```bash
 git fetch origin
@@ -64,56 +66,57 @@ Abra um PR de `feature/minha-funcionalidade` para `dev`.
 
 ## Regras para Pull Requests
 
-- O PR deve ter uma descricao clara do que foi implementado e o motivo.
-- E obrigatoria a revisao de **pelo menos 1 membro** da equipe antes do merge.
+- O PR deve ter uma descrição clara do que foi implementado e o motivo.
+- É obrigatória a revisão de **pelo menos 1 membro** da equipe antes do merge.
 - Todos os checks de CI (testes, linting e tipagem) devem passar.
-- Use **Squash and Merge** ao integrar `feature` -> `dev`.
-- Use **Merge Commit** ao integrar `dev` -> `main`.
-- Nunca faca commits diretos em `main` ou `dev`.
+- Use **Squash and Merge** ao integrar `feature` → `dev`.
+- Use **Merge Commit** ao integrar `dev` → `main` (ou `hotfix/*` → `main`).
+- Nunca faça commits diretos em `main` ou `dev`.
+- PRs para `main` que não venham de `dev` ou `hotfix/*` são **automaticamente bloqueados** pelo workflow [`pr-gate.yml`](.github/workflows/pr-gate.yml).
 
 ---
 
-## Convencao de Commits (Conventional Commits)
+## Convenção de Commits (Conventional Commits)
 
-Todos os commits devem seguir o padrao [Conventional Commits](https://www.conventionalcommits.org/):
+Todos os commits devem seguir o padrão [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```
-<tipo>: <descricao curta>
+<tipo>: <descrição curta>
 ```
 
-| Tipo | Descricao |
+| Tipo | Descrição |
 |---|---|
 | `feat` | Nova funcionalidade |
-| `fix` | Correcao de bug |
-| `docs` | Alteracoes apenas em documentacao |
-| `style` | Formatacao, ponto e virgula, etc. |
-| `refactor` | Refatoracao sem mudanca de comportamento |
-| `test` | Adicao ou correcao de testes |
-| `chore` | Tarefas de manutencao (deps, CI, build) |
+| `fix` | Correção de bug |
+| `docs` | Alterações apenas em documentação |
+| `style` | Formatação, ponto e vírgula, etc. (sem mudança de comportamento) |
+| `refactor` | Refatoração sem mudança de comportamento |
+| `test` | Adição ou correção de testes |
+| `chore` | Tarefas de manutenção (deps, CI, build) |
 
 ### Exemplos
 
 ```
 feat: adiciona endpoint de refresh token
-fix: corrige validacao de email duplicado
-docs: atualiza README com instrucoes de DynamoDB Local
-test: adiciona testes unitarios para AuthService
-refactor: extrai logica de hashing para PasswordHasher port
-chore: atualiza dependencias do pytest
+fix: corrige validação de email duplicado
+docs: atualiza README com instruções de DynamoDB Local
+test: adiciona testes unitários para AuthService
+refactor: extrai lógica de hashing para PasswordHasher port
+chore: atualiza dependências do pytest
 ```
 
 ---
 
-## Estrutura de Codigo
+## Estrutura de Código
 
-O projeto segue **Arquitetura Hexagonal**. Ao contribuir, respeite a separacao de camadas:
+O projeto segue **Arquitetura Hexagonal**. Ao contribuir, respeite a separação de camadas:
 
-- **Domain** (`app/domain/`): entidades e value objects. Sem dependencias externas.
-- **Ports** (`app/ports/`): interfaces (ABCs). Sem implementacao concreta.
+- **Domain** (`app/domain/`): entidades e value objects. Sem dependências externas.
+- **Ports** (`app/ports/`): interfaces (ABCs). Sem implementação concreta.
 - **Application** (`app/application/`): use cases. Dependem apenas de ports e domain.
-- **Adapters** (`app/adapters/`): implementacoes concretas (DynamoDB, JWT, bcrypt, FastAPI routers).
+- **Adapters** (`app/adapters/`): implementações concretas (DynamoDB, JWT, bcrypt, FastAPI routers).
 
-> Regra de ouro: o dominio nunca importa adaptadores. Adaptadores importam ports.
+> Regra de ouro: o domínio nunca importa adaptadores. Adaptadores importam ports.
 
 ---
 
@@ -121,21 +124,23 @@ O projeto segue **Arquitetura Hexagonal**. Ao contribuir, respeite a separacao d
 
 As pipelines de **GitHub Actions** rodam automaticamente:
 
-- **`dev`** (CI): Ruff lint/format, mypy e pytest com cobertura minima de 80%.
-- **`main`** (CD): mesmos checks + build da imagem Docker.
+- **`dev`** (CI — [`ci.yml`](.github/workflows/ci.yml)): Ruff lint/format, mypy e pytest com cobertura mínima de 80%.
+- **`main`** (CD — [`cd.yml`](.github/workflows/cd.yml)): mesmos checks + build da imagem Docker via [`backend/Dockerfile`](backend/Dockerfile).
+- **PRs para `main`** ([`pr-gate.yml`](.github/workflows/pr-gate.yml)): bloqueia automaticamente PRs que não venham de `dev` ou `hotfix/*`.
+- **Pós-merge em `main`** ([`sync-dev.yml`](.github/workflows/sync-dev.yml)): sincroniza `dev` com `main` automaticamente.
 
-O PR so pode ser mergeado se **todos os checks passarem**. Nao tente fazer bypass dos checks.
+O PR só pode ser mergeado se **todos os checks passarem**. Não tente fazer bypass dos checks.
 
 ---
 
 ## Checklist antes de abrir o PR
 
-- [ ] Codigo segue a arquitetura hexagonal (sem imports cruzados entre camadas)
-- [ ] Testes unitarios para novos use cases e regras de dominio
-- [ ] Aplicou tecnicas de teste adequadas (particao de equivalencia, valor limite, etc.)
+- [ ] Código segue a arquitetura hexagonal (sem imports cruzados entre camadas)
+- [ ] Testes unitários para novos use cases e regras de domínio
+- [ ] Aplicou técnicas de teste adequadas (partição de equivalência, valor limite, etc.) — ver [TESTING.md](TESTING.md)
 - [ ] `ruff check .` e `ruff format .` passam sem erros
 - [ ] `mypy app/` passa sem erros
 - [ ] `pytest --cov-fail-under=80` passa sem falhas
-- [ ] Schemas de entrada/saida utilizam Pydantic `BaseModel`
-- [ ] Configuracoes utilizam `pydantic-settings` (`BaseSettings`)
-- [ ] Pipeline CI passa no PR antes de solicitar revisao
+- [ ] Schemas de entrada/saída utilizam Pydantic `BaseModel`
+- [ ] Configurações utilizam `pydantic-settings` (`BaseSettings`)
+- [ ] Pipeline CI passa no PR antes de solicitar revisão

@@ -1,0 +1,39 @@
+meta {
+  name: 12 Login Seed Admin (200)
+  type: http
+  seq: 12
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: {{seed_admin_email}}
+  password: {{seed_admin_password}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.access_token: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("seed_admin_access_token", res.body.access_token);
+  }
+}
+
+docs {
+  Capitulo 4 - Admin via seed root.
+
+  Pre-condicao: app subiu com app_env=development, o lifespan
+  garantiu o admin root no DDB (ver backend/app/main.py
+  _seed_root_admin). Login com seed_admin_email +
+  seed_admin_password retorna token com scopes=["user","admin"].
+
+  Substitui o setup manual de promocao via update-item no DDB
+  documentado no README de versoes anteriores.
+}

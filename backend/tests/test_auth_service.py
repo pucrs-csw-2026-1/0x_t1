@@ -407,6 +407,58 @@ class TestAuthServiceRefresh:
         with pytest.raises(TokenRevokedError):
             auth_service.refresh(refresh_token)
 
+    def test_refresh_de_usuario_desativado_lanca_token_revogado(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+        valid_user: User,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        """Refresh de usuário com is_active=False lança TokenRevokedError.
+
+        Cobre a defesa que conecta DELETE /users/me (e PATCH admin com
+        is_active=false) ao bloqueio do refresh: o JWT permanece sintaticamente
+        válido após o deactivate, mas o service rejeita o refresh por estado
+        da conta no banco.
+        """
+        valid_user.is_active = False
+        user_repository_mock.find_by_id.return_value = valid_user
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
+        )
+        refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
+
+        with pytest.raises(TokenRevokedError):
+            auth_service.refresh(refresh_token)
+
+    def test_refresh_de_usuario_inexistente_lanca_token_revogado(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        """Refresh com sub apontando para user_id que não existe mais no repo
+        lança TokenRevokedError. Defesa em profundidade — a API atual não tem
+        hard delete, mas a checagem protege contra remoção fora de banda."""
+        user_repository_mock.find_by_id.return_value = None
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
+        )
+        refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
+
+        with pytest.raises(TokenRevokedError):
+            auth_service.refresh(refresh_token)
+
 
 class TestAuthServiceLogout:
     """Testes do método logout (US-08)."""

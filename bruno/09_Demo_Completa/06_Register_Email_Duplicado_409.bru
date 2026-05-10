@@ -1,0 +1,32 @@
+meta {
+  name: 06 Register Email Duplicado (409)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Outro",
+    "last_name": "User",
+    "username": "outro.user",
+    "email": "{{demo_email}}",
+    "password": "{{demo_password}}"
+  }
+}
+
+assert {
+  res.status: eq 409
+  res.body.detail: contains {{demo_email}}
+}
+
+docs {
+  Capitulo 2 - Tratamento de excecao: email ja cadastrado eh
+  rejeitado com 409 (EmailAlreadyExistsError). Pre-condicao:
+  request 01 deste flow ja registrou o demo_email.
+}

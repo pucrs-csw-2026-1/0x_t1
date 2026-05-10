@@ -1,0 +1,39 @@
+meta {
+  name: 13 Admin Get Me (200)
+  type: http
+  seq: 13
+}
+
+get {
+  url: {{baseUrl}}/users/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{seed_admin_access_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.email: eq {{seed_admin_email}}
+}
+
+tests {
+  test("admin tem 2 access levels (user + admin)", function() {
+    expect(res.body.access_level).to.be.an("array").with.lengthOf(2);
+  });
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("seed_admin_user_id", res.body.id);
+  }
+}
+
+docs {
+  Capitulo 4 - Captura o seed_admin_user_id (usado no request 19
+  para o cenario "admin nao pode alterar a si mesmo"). O endpoint
+  /auth/login nao retorna o user_id, entao precisamos de uma
+  chamada GET /users/me com o token recem-emitido.
+}

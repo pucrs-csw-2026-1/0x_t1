@@ -1,0 +1,35 @@
+meta {
+  name: 08 Update Profile (200)
+  type: http
+  seq: 8
+}
+
+patch {
+  url: {{baseUrl}}/users/me
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{demo_access_token}}
+}
+
+body:json {
+  {
+    "first_name": "Demo Atualizado",
+    "last_name": "User Atualizado"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.first_name: eq Demo Atualizado
+  res.body.last_name: eq User Atualizado
+  res.body.email: eq {{demo_email}}
+}
+
+docs {
+  Capitulo 3 - Self-service de perfil (US-15 PATCH /users/me).
+  PATCH parcial: apenas first_name e last_name sao alterados,
+  email e username preservados.
+}

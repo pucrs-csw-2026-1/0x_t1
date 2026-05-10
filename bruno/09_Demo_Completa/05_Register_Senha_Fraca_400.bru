@@ -1,0 +1,31 @@
+meta {
+  name: 05 Register Senha Fraca (400)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Fraca",
+    "last_name": "User",
+    "username": "fraca.user",
+    "email": "fraca@svc.local",
+    "password": "abc"
+  }
+}
+
+assert {
+  res.status: eq 400
+  res.body.detail: contains Senha
+}
+
+docs {
+  Capitulo 2 - Tratamento de excecao: senha fraca eh rejeitada
+  no cadastro com 400 (WeakPasswordError).
+}

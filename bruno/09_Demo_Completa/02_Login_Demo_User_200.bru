@@ -1,0 +1,35 @@
+meta {
+  name: 02 Login Demo User (200)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: {{demo_email}}
+  password: {{demo_password}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.token_type: eq bearer
+  res.body.access_token: isDefined
+  res.body.refresh_token: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("demo_access_token", res.body.access_token);
+    bru.setVar("demo_refresh_token", res.body.refresh_token);
+  }
+}
+
+docs {
+  Capitulo 1 - Autenticacao via OAuth2 Password Flow (US-05 Login).
+  Popula demo_access_token e demo_refresh_token.
+}

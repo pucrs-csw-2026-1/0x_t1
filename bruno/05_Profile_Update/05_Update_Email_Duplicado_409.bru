@@ -1,0 +1,31 @@
+meta {
+  name: 05 Update Email Duplicado (409)
+  type: http
+  seq: 5
+}
+
+patch {
+  url: {{baseUrl}}/users/me
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "email": "conflito@example.com"
+  }
+}
+
+assert {
+  res.status: eq 409
+}
+
+docs {
+  Pre-condicao: rodar 01_Register_Conflict_User antes (registra
+  conflito@example.com). O usuario juca tenta tomar esse email
+  e o service detecta colisao via repositorio (find_by_email).
+}

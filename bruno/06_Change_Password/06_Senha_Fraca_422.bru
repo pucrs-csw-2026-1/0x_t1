@@ -1,0 +1,33 @@
+meta {
+  name: 06 Nova Senha Fraca (422)
+  type: http
+  seq: 6
+}
+
+put {
+  url: {{baseUrl}}/users/me/password
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "current_password": "{{password}}",
+    "new_password": "abc"
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  US-16: nova senha fraca -> WeakPasswordError -> 422. Note que o
+  mesmo erro de dominio retorna 400 no /users/register e 422 aqui —
+  o router de password change usa 422 (UNPROCESSABLE_CONTENT) por
+  ser semanticamente "dado nao processavel" sobre recurso ja existente.
+}

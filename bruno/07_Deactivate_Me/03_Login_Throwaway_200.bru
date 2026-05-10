@@ -1,0 +1,33 @@
+meta {
+  name: 03 Login Throwaway (200)
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: desativar@example.com
+  password: Senha@123
+}
+
+assert {
+  res.status: eq 200
+  res.body.access_token: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("deactivate_access_token", res.body.access_token);
+  }
+}
+
+docs {
+  Login do usuario throwaway. O token vai para a var
+  {{deactivate_access_token}} para nao sobrescrever o
+  {{access_token}} do fluxo principal (juca).
+}

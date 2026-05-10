@@ -1,0 +1,26 @@
+meta {
+  name: 17 Admin Get Demo User (200)
+  type: http
+  seq: 17
+}
+
+get {
+  url: {{baseUrl}}/admin/users/{{demo_user_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{seed_admin_access_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq {{demo_user_id}}
+  res.body.email: eq {{demo_email}}
+}
+
+docs {
+  Capitulo 4 - US-18 admin recupera dados de um usuario por id.
+  Reaproveita o mesmo schema UserResponse do GET /users/me.
+}

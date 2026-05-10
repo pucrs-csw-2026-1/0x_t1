@@ -1,0 +1,31 @@
+meta {
+  name: 07 Admin Update Access Level Invalido (422)
+  type: http
+  seq: 7
+}
+
+patch {
+  url: {{baseUrl}}/admin/users/{{target_user_id}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_access_token}}
+}
+
+body:json {
+  {
+    "access_level": ["11111111-1111-1111-1111-111111111111"]
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  US-18: access_level recebe lista de UUIDs que precisam existir no
+  catalogo (tabela access_level). UUID valido mas inexistente ->
+  AccessLevelNotFoundError -> 422.
+}

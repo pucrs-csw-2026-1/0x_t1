@@ -1,0 +1,30 @@
+meta {
+  name: 15 Admin Ping Sem Scope Admin (403)
+  type: http
+  seq: 15
+}
+
+get {
+  url: {{baseUrl}}/admin/ping
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{demo_access_token}}
+}
+
+assert {
+  res.status: eq 403
+  res.body.detail: contains admin
+}
+
+docs {
+  Capitulo 4 - Tratamento de excecao: token valido mas SEM
+  scope admin. demo_user neste ponto ainda nao foi promovido
+  (request 18 promove), entao o gate retorna 403 com mensagem
+  "permissao insuficiente: requer 'admin'".
+
+  IMPORTANTE: este request precisa rodar ANTES do 18. A ordem
+  do flow nao eh acidental.
+}
