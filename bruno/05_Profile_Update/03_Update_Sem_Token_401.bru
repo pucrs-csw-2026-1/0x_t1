@@ -1,0 +1,21 @@
+meta {
+  name: 03 Update Sem Token (401)
+  type: http
+  seq: 3
+}
+
+patch {
+  url: {{baseUrl}}/users/me
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Anonimo"
+  }
+}
+
+assert {
+  res.status: eq 401
+}

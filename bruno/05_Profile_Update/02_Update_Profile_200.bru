@@ -1,0 +1,49 @@
+meta {
+  name: 02 Update Profile (200)
+  type: http
+  seq: 2
+}
+
+patch {
+  url: {{baseUrl}}/users/me
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "first_name": "Juca Atualizado",
+    "last_name": "Bala Atualizado"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq {{user_id}}
+  res.body.first_name: eq Juca Atualizado
+  res.body.last_name: eq Bala Atualizado
+  res.body.email: eq {{email}}
+  res.body.username: eq {{username}}
+}
+
+tests {
+  test("US-15: PATCH parcial preserva campos nao informados", function() {
+    expect(res.body.email).to.equal(bru.getVar("email"));
+    expect(res.body.username).to.equal(bru.getVar("username"));
+  });
+
+  test("US-15: senha nunca eh exposta", function() {
+    expect(res.body).to.not.have.property("password");
+    expect(res.body).to.not.have.property("hashed_password");
+  });
+}
+
+docs {
+  Apenas first_name e last_name sao alterados — email e username
+  permanecem para nao quebrar o flow de login/refresh dos testes
+  seguintes.
+}

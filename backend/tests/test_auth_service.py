@@ -1,4 +1,4 @@
-"""Testes unitários para AuthService (US-06 login e US-08 logout)."""
+"""Testes unitários para AuthService (US-06 login, US-08 logout, US-13 scopes)."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ from app.domain.user import User
 from app.ports.password_hasher import PasswordHasher
 from app.ports.token_provider import TokenProvider
 from app.ports.user_repository import UserRepository
+from tests.conftest import ADMIN_UUID, USER_UUID
+from tests.fakes.access_level_repository import FakeAccessLevelRepository
 
 SECRET = "chave-secreta-de-teste"
 ALGORITHM = "HS256"
@@ -67,11 +69,13 @@ def auth_service(
     user_repository_mock: UserRepository,
     password_hasher_mock: PasswordHasher,
     token_provider_mock: TokenProvider,
+    fake_access_level_repo: FakeAccessLevelRepository,
 ) -> AuthService:
     return AuthService(
         user_repository=user_repository_mock,
         password_hasher=password_hasher_mock,
         token_provider=token_provider_mock,
+        access_level_repo=fake_access_level_repo,
     )
 
 
@@ -145,6 +149,118 @@ class TestAuthServiceLogin:
             auth_service.login(email="email-invalido", password="Senha@123")
 
 
+class TestAuthServiceLoginScopes:
+    """Mapeamento UUID -> title nas scopes do JWT (US-13)."""
+
+    def test_login_mapeia_uuids_de_access_level_para_titles(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-13.5-01: usuario com [USER_UUID, ADMIN_UUID] gera JWT com
+        scopes=['user', 'admin'] (strings semanticas, nao UUIDs)."""
+        valid_user.access_level = [USER_UUID, ADMIN_UUID]
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = True
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
+        )
+
+        tokens = auth_service.login(email=valid_user.email.value, password="Senha@123")
+
+        access_payload = jwt_token_provider.decode_token(tokens["access_token"])
+        refresh_payload = jwt_token_provider.decode_token(tokens["refresh_token"])
+        assert access_payload["scopes"] == ["user", "admin"]
+        assert refresh_payload["scopes"] == ["user", "admin"]
+
+    def test_login_descarta_uuid_orfao_silenciosamente(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-13.5-02: UUID que nao existe no catalogo eh descartado;
+        login nao quebra para o usuario por dessincronia do catalogo."""
+        valid_user.access_level = [USER_UUID, "uuid-orfao-nao-existe"]
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = True
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
+        )
+
+        tokens = auth_service.login(email=valid_user.email.value, password="Senha@123")
+
+        payload = jwt_token_provider.decode_token(tokens["access_token"])
+        assert payload["scopes"] == ["user"]
+
+    def test_login_com_access_level_vazio_emite_scopes_vazias(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-13.5-03: usuario sem perfis recebe JWT com scopes=[]; nao
+        ganha permissoes implicitas."""
+        valid_user.access_level = []
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = True
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
+        )
+
+        tokens = auth_service.login(email=valid_user.email.value, password="Senha@123")
+
+        payload = jwt_token_provider.decode_token(tokens["access_token"])
+        assert payload["scopes"] == []
+
+    def test_login_nao_emite_uuids_brutos_nas_scopes(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-13.5-04: regressao explicita - JWT nao deve carregar UUIDs
+        em scopes (Security(..., scopes=['admin']) compara strings exatas
+        e UUIDs nunca casariam)."""
+        valid_user.access_level = [ADMIN_UUID]
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = True
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
+        )
+
+        tokens = auth_service.login(email=valid_user.email.value, password="Senha@123")
+
+        payload = jwt_token_provider.decode_token(tokens["access_token"])
+        assert ADMIN_UUID not in payload["scopes"]
+        assert "admin" in payload["scopes"]
+
+
 class TestAuthServiceRefresh:
     """Testes do método refresh (US-06 + US-08)."""
 
@@ -153,12 +269,14 @@ class TestAuthServiceRefresh:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         """CT-04: Refresh token válido retorna novo access token."""
         auth_service = AuthService(
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
         )
         refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
 
@@ -172,6 +290,7 @@ class TestAuthServiceRefresh:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         """CT-04b: refresh com refresh_token contendo scopes deve emitir
         access_token com os mesmos scopes (regressão: antes saía vazio
@@ -180,6 +299,7 @@ class TestAuthServiceRefresh:
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
         )
         refresh_token = jwt_token_provider.generate_refresh_token(USER_ID, SCOPES)
 
@@ -194,10 +314,13 @@ class TestAuthServiceRefresh:
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
         valid_user: User,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
-        """CT-04c: ponta-a-ponta — login emite refresh com scopes do usuário,
-        e refresh subsequente preserva esses scopes no novo access_token."""
-        valid_user.access_level = ["user", "admin"]
+        """CT-04c: ponta-a-ponta — login mapeia UUIDs do user.access_level
+        para titles antes de emitir o refresh; o refresh subsequente preserva
+        os titles no novo access_token. Ordem dos titles segue a ordem dos
+        UUIDs no usuario."""
+        valid_user.access_level = [USER_UUID, ADMIN_UUID]
         user_repository_mock.find_by_email.return_value = valid_user
         password_hasher_mock.verify.return_value = True
 
@@ -205,6 +328,7 @@ class TestAuthServiceRefresh:
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
         )
 
         tokens = auth_service.login(email=valid_user.email.value, password="Senha@123")
@@ -218,6 +342,7 @@ class TestAuthServiceRefresh:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         """CT-05: Refresh token expirado lança TokenExpiredError."""
         from datetime import datetime, timedelta, timezone
@@ -226,6 +351,7 @@ class TestAuthServiceRefresh:
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
         )
         expired_payload: dict[str, Any] = {
             "sub": USER_ID,
@@ -241,12 +367,14 @@ class TestAuthServiceRefresh:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         """CT-06: Refresh token com assinatura inválida lança InvalidTokenError."""
         auth_service = AuthService(
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
         )
         refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
         parts = refresh_token.split(".")
@@ -260,12 +388,14 @@ class TestAuthServiceRefresh:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         """CT-07: Refresh token com flag 'revoked=true' lança TokenRevokedError."""
         auth_service = AuthService(
             user_repository=user_repository_mock,
             password_hasher=password_hasher_mock,
             token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
         )
         revoked_payload: dict[str, Any] = {
             "sub": USER_ID,
@@ -273,6 +403,58 @@ class TestAuthServiceRefresh:
             "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
         }
         refresh_token = jwt.encode(revoked_payload, SECRET, algorithm=ALGORITHM)
+
+        with pytest.raises(TokenRevokedError):
+            auth_service.refresh(refresh_token)
+
+    def test_refresh_de_usuario_desativado_lanca_token_revogado(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+        valid_user: User,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        """Refresh de usuário com is_active=False lança TokenRevokedError.
+
+        Cobre a defesa que conecta DELETE /users/me (e PATCH admin com
+        is_active=false) ao bloqueio do refresh: o JWT permanece sintaticamente
+        válido após o deactivate, mas o service rejeita o refresh por estado
+        da conta no banco.
+        """
+        valid_user.is_active = False
+        user_repository_mock.find_by_id.return_value = valid_user
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
+        )
+        refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
+
+        with pytest.raises(TokenRevokedError):
+            auth_service.refresh(refresh_token)
+
+    def test_refresh_de_usuario_inexistente_lanca_token_revogado(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        """Refresh com sub apontando para user_id que não existe mais no repo
+        lança TokenRevokedError. Defesa em profundidade — a API atual não tem
+        hard delete, mas a checagem protege contra remoção fora de banda."""
+        user_repository_mock.find_by_id.return_value = None
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=jwt_token_provider,
+            access_level_repo=fake_access_level_repo,
+        )
+        refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
 
         with pytest.raises(TokenRevokedError):
             auth_service.refresh(refresh_token)
@@ -286,6 +468,7 @@ class TestAuthServiceLogout:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         """CT-08: Logout revoga o refresh token no repositório."""
         refresh_repo = InMemoryRefreshTokenRepository()
@@ -294,6 +477,7 @@ class TestAuthServiceLogout:
             password_hasher=password_hasher_mock,
             token_provider=jwt_token_provider,
             refresh_repository=refresh_repo,
+            access_level_repo=fake_access_level_repo,
         )
         refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
 
@@ -310,6 +494,7 @@ class TestAuthServiceLogout:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         """CT-09: Logout é idempotente (sem erro ao revogar token já revogado)."""
         refresh_repo = InMemoryRefreshTokenRepository()
@@ -318,6 +503,7 @@ class TestAuthServiceLogout:
             password_hasher=password_hasher_mock,
             token_provider=jwt_token_provider,
             refresh_repository=refresh_repo,
+            access_level_repo=fake_access_level_repo,
         )
         refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
 
@@ -332,6 +518,7 @@ class TestAuthServiceLogout:
         user_repository_mock: UserRepository,
         password_hasher_mock: PasswordHasher,
         jwt_token_provider: JwtTokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         """CT-10: Logout sem RefreshRepository injetado não lança erro."""
         auth_service = AuthService(
@@ -339,8 +526,143 @@ class TestAuthServiceLogout:
             password_hasher=password_hasher_mock,
             token_provider=jwt_token_provider,
             refresh_repository=None,
+            access_level_repo=fake_access_level_repo,
         )
         refresh_token = jwt_token_provider.generate_refresh_token(USER_ID)
 
         # Não deve lançar erro mesmo sem repositório
         auth_service.logout(refresh_token)
+
+
+class TestAuthServiceInactiveUser:
+    """Testes para desativação de conta (US-17)."""
+
+    def test_login_usuario_inativo_retorna_credenciais_invalidas(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-01: Login de usuário inativo retorna InvalidCredentialsError
+        (não revela que a conta existe mas está inativa)."""
+        # Marca o usuário como inativo
+        valid_user.deactivate()
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
+        )
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = True
+
+        with pytest.raises(InvalidCredentialsError) as exc_info:
+            auth_service.login(
+                email=valid_user.email.value, password="SenhaCorreta@123"
+            )
+
+        # Não deve tentar gerar tokens
+        token_provider_mock.generate_access_token.assert_not_called()
+        token_provider_mock.generate_refresh_token.assert_not_called()
+        # Exceção deve ser a mesma de credenciais inválidas (não específica)
+        assert str(exc_info.value) == "Credenciais inválidas."
+
+    def test_login_usuario_inativo_mesma_mensagem_usuario_inexistente(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-02: Login com usuário inativo retorna a mesma mensagem de erro
+        que usuário inexistente (segurança: não enumera contas)."""
+        valid_user.deactivate()
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
+        )
+
+        # Cenário 1: usuário inativo
+        user_repository_mock.find_by_email.return_value = valid_user
+        try:
+            auth_service.login(
+                email=valid_user.email.value, password="SenhaCorreta@123"
+            )
+        except InvalidCredentialsError as exc_inactive:
+            msg_inactive = str(exc_inactive)
+
+        # Cenário 2: usuário inexistente
+        user_repository_mock.find_by_email.return_value = None
+        try:
+            auth_service.login(
+                email="naoexiste@example.com", password="SenhaCorreta@123"
+            )
+        except InvalidCredentialsError as exc_notfound:
+            msg_notfound = str(exc_notfound)
+
+        # Ambos retornam a mesma mensagem
+        assert msg_inactive == msg_notfound == "Credenciais inválidas."
+
+    def test_login_senha_incorreta_usuario_inativo_retorna_credenciais_invalidas(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-03: Se usuário está inativo, rejeita antes de verificar senha
+        (evita timing attacks, atua uniformemente)."""
+        valid_user.deactivate()
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
+        )
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = False  # Senha errada
+
+        with pytest.raises(InvalidCredentialsError):
+            auth_service.login(email=valid_user.email.value, password="SenhaErrada@123")
+
+        # Verifica que não tentou validar a senha (rejeita antes)
+        password_hasher_mock.verify.assert_not_called()
+
+    def test_reativacao_permite_login(
+        self,
+        user_repository_mock: UserRepository,
+        password_hasher_mock: PasswordHasher,
+        token_provider_mock: TokenProvider,
+        fake_access_level_repo: FakeAccessLevelRepository,
+        valid_user: User,
+    ) -> None:
+        """CT-04: Após reativação, login com senha correta funciona novamente
+        (transição ativo -> inativo -> ativo)."""
+        # Desativa e depois reativa
+        valid_user.deactivate()
+        valid_user.activate()
+
+        auth_service = AuthService(
+            user_repository=user_repository_mock,
+            password_hasher=password_hasher_mock,
+            token_provider=token_provider_mock,
+            access_level_repo=fake_access_level_repo,
+        )
+        user_repository_mock.find_by_email.return_value = valid_user
+        password_hasher_mock.verify.return_value = True
+        token_provider_mock.generate_access_token.return_value = "access.jwt"
+        token_provider_mock.generate_refresh_token.return_value = "refresh.jwt"
+
+        result = auth_service.login(
+            email=valid_user.email.value, password="SenhaCorreta@123"
+        )
+
+        assert result["access_token"] == "access.jwt"
+        assert result["refresh_token"] == "refresh.jwt"

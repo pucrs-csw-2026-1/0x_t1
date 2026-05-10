@@ -1,0 +1,33 @@
+meta {
+  name: 02 List Users Token User 403
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/admin/users
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+assert {
+  res.status: eq 403
+}
+
+tests {
+  test("US-14: token com scope 'user' nao acessa /admin/users", function() {
+    expect(res.body.detail).to.match(/admin/i);
+  });
+}
+
+docs {
+  Gate por scope: token válido (Bearer aceito), mas sem 'admin' nos
+  scopes. Esperado 403 com mensagem indicando o scope requerido.
+
+  Pré-requisito: rodar `01_Happy_Path/02_Login.bru` antes para popular
+  a var {{access_token}} com um token de user normal.
+}

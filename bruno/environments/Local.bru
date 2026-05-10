@@ -1,14 +1,32 @@
 vars {
   baseUrl: http://127.0.0.1:8000
-  email: maria.bruno@example.com
+  email: juca@email.com
   password: Senha@123
-  username: maria.bruno
-  first_name: Maria
-  last_name: Bruno
+  username: juca.bala
+  first_name: Juca
+  last_name: Bala
+  admin_uuid: bace0701-15e3-5144-97c5-47487d543032
+  user_uuid: 9e556479-7003-5916-9cd6-33f4227cec9b
+  demo_email: demo@svc.local
+  demo_password: Demo@123
+  demo_username: demo.user
+  demo_first_name: Demo
+  demo_last_name: User
+  seed_admin_email: admin@local.dev
+  seed_admin_password: Admin@123
 }
-
 vars:secret [
   access_token,
   refresh_token,
-  user_id
+  user_id,
+  admin_access_token,
+  admin_user_id,
+  next_cursor,
+  deactivate_access_token,
+  target_user_id,
+  demo_access_token,
+  demo_refresh_token,
+  demo_user_id,
+  seed_admin_access_token,
+  seed_admin_user_id
 ]

@@ -1,0 +1,40 @@
+meta {
+  name: 01 Register Target User (201)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Alvo",
+    "last_name": "Admin",
+    "username": "alvo.admin",
+    "email": "alvo.admin@example.com",
+    "password": "Senha@123"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setVar("target_user_id", res.body.id);
+  }
+}
+
+docs {
+  Cria o usuario que serve de alvo para os requests admin de GET/PATCH/DELETE
+  desta pasta. O id vai para {{target_user_id}}.
+
+  Em re-runs com o usuario ja existente, o 409 cai aqui — nesse caso,
+  copie manualmente o id de alvo.admin@example.com para a var
+  target_user_id no environment.
+}

@@ -1,0 +1,24 @@
+meta {
+  name: 04 Admin Get User Token User (403)
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/admin/users/{{target_user_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+assert {
+  res.status: eq 403
+}
+
+docs {
+  US-18: gate por scope admin. Token de user normal (juca pre-promocao
+  OU qualquer usuario sem scope admin) -> 403.
+}

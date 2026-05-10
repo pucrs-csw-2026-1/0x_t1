@@ -1,0 +1,37 @@
+meta {
+  name: 02 Register Throwaway (201)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Desativar",
+    "last_name": "Teste",
+    "username": "desativar.teste",
+    "email": "desativar@example.com",
+    "password": "Senha@123"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
+
+docs {
+  Cria um usuario descartavel que sera desativado no request 04.
+  Usar usuario separado evita quebrar o fluxo principal (juca) —
+  desativar juca tornaria os logins/refreshes seguintes invalidos.
+
+  Em re-runs, este request pode retornar 409 (email ja cadastrado).
+  E aceitavel se o usuario foi desativado mas nao removido — o
+  proximo passo sera o login que tambem falhara (401), entao o
+  re-run completo da pasta 07 so funciona contra Ministack zerada
+  ou com o usuario desativar@example.com hard-deletado do DDB.
+}

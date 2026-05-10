@@ -1,0 +1,21 @@
+meta {
+  name: 02 Admin Ping Sem Token 401
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/admin/ping
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 401
+}
+
+docs {
+  Gate de autorização: rota /admin/ping exige Bearer.
+  Sem header Authorization, FastAPI retorna 401 antes de chegar na
+  checagem de scope.
+}

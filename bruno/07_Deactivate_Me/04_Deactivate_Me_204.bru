@@ -1,0 +1,33 @@
+meta {
+  name: 04 Deactivate Me (204)
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{baseUrl}}/users/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{deactivate_access_token}}
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  US-17: soft delete (is_active=false). Apos isso:
+  - request 05 confirma que login com as mesmas credenciais retorna 401;
+  - tentativas de refresh com tokens antigos tambem retornam 401
+    'Refresh token revogado' (auth_service.refresh verifica is_active
+    antes de emitir novo access token).
+
+  Nota de implementacao: o revoke_all_by_user chamado em deactivate
+  continua sendo no-op no InMemoryRefreshTokenRepository (o adapter
+  de dev nao rastreia tokens emitidos no login). O bloqueio efetivo
+  do refresh eh feito pela checagem de is_active no caminho do
+  refresh, nao pela revogacao explicita por token.
+}

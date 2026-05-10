@@ -1,0 +1,34 @@
+meta {
+  name: 04 Refresh Token (200)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/auth/refresh
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "refresh_token": "{{demo_refresh_token}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.access_token: isDefined
+  res.body.token_type: eq bearer
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("demo_access_token", res.body.access_token);
+  }
+}
+
+docs {
+  Capitulo 1 - Renovacao do access token via refresh token.
+  Atualiza {{demo_access_token}} com o token novo.
+}

@@ -1,0 +1,23 @@
+meta {
+  name: 09 Admin Delete Token User (403)
+  type: http
+  seq: 9
+}
+
+delete {
+  url: {{baseUrl}}/admin/users/{{target_user_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+assert {
+  res.status: eq 403
+}
+
+docs {
+  Token sem scope admin -> 403 antes de chegar no handler.
+}

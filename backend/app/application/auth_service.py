@@ -6,6 +6,7 @@ from app.domain.exceptions import (
     TokenRevokedError,
 )
 from app.domain.user import Email
+from app.ports.access_level_repository import AccessLevelRepository
 from app.ports.password_hasher import PasswordHasher
 from app.ports.refresh_token_repository import RefreshTokenRepository
 from app.ports.token_provider import TokenProvider
@@ -20,12 +21,14 @@ class AuthService:
         user_repository: UserRepository,
         password_hasher: PasswordHasher,
         token_provider: TokenProvider,
+        access_level_repo: AccessLevelRepository,
         refresh_repository: RefreshTokenRepository | None = None,
     ) -> None:
         self._user_repository = user_repository
         self._password_hasher = password_hasher
         self._token_provider = token_provider
         self._refresh_repository = refresh_repository
+        self._access_level_repo = access_level_repo
 
     def login(self, email: str, password: str) -> dict[str, str]:
         """Autentica usuário com email e senha.
@@ -34,6 +37,8 @@ class AuthService:
             InvalidCredentialsError: se email malformado, inexistente, ou senha
                 incorreta. Email malformado é tratado como credencial inválida
                 para não vazar informação sobre a base de usuários.
+                Também retorna InvalidCredentialsError se o usuário está inativo
+                (não revela que a conta existe mas está desativada).
         """
         try:
             email_vo = Email(email)
@@ -44,10 +49,18 @@ class AuthService:
         if user is None:
             raise InvalidCredentialsError()
 
+        # Rejeita login de usuários inativos (não revela que a conta existe)
+        if not user.is_active:
+            raise InvalidCredentialsError()
+
         if not self._password_hasher.verify(password, user.hashed_password.value):
             raise InvalidCredentialsError()
 
-        scopes = list(user.access_level)
+        scopes: list[str] = []
+        for level_id in user.access_level:
+            level = self._access_level_repo.find_by_id(level_id)
+            if level is not None:
+                scopes.append(level.title)
         access_token = self._token_provider.generate_access_token(
             user_id=user.id,
             scopes=scopes,
@@ -66,10 +79,15 @@ class AuthService:
     def refresh(self, refresh_token: str) -> str:
         """Renova o access token a partir de um refresh token válido.
 
-        Verifica revogação antes de decodificar.
+        Verifica revogação explícita, decodifica o JWT e confirma que o
+        usuário associado ao token ainda existe e está ativo. Usuários
+        desativados via DELETE /users/me ou PATCH /admin/users/{id} com
+        is_active=false têm o refresh bloqueado mesmo que o JWT ainda
+        não tenha expirado.
 
         Raises:
-            TokenRevokedError: se o refresh token foi revogado.
+            TokenRevokedError: se o refresh token foi revogado, ou se o
+                usuário associado foi desativado ou não existe mais.
         """
         # Verifica revogação primeiro (se repositório foi injetado)
         if self._refresh_repository is not None and self._refresh_repository.is_revoked(
@@ -84,6 +102,15 @@ class AuthService:
             raise TokenRevokedError()
 
         user_id = payload["sub"]
+
+        # Bloqueia refresh de contas desativadas. Como o JWT é stateless e
+        # InMemoryRefreshTokenRepository não rastreia tokens por usuário no
+        # login, esta verificação é o que conecta o estado da conta
+        # (is_active) ao ciclo de vida do refresh token.
+        user = self._user_repository.find_by_id(user_id)
+        if user is None or not user.is_active:
+            raise TokenRevokedError()
+
         scopes = payload.get("scopes", [])
         return self._token_provider.generate_access_token(
             user_id=user_id,

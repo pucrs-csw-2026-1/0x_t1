@@ -1,0 +1,34 @@
+meta {
+  name: 21 Self Deactivate (204)
+  type: http
+  seq: 21
+}
+
+delete {
+  url: {{baseUrl}}/users/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{demo_access_token}}
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Capitulo 5 - US-17 desativacao da propria conta (soft delete).
+  Marca is_active=false. Subsequente: o request 22 confirma que
+  login com as mesmas credenciais retorna 401.
+
+  Ambos os caminhos de re-autenticacao ficam bloqueados:
+  - POST /auth/login: AuthService.login rejeita user inativo;
+  - POST /auth/refresh: AuthService.refresh verifica is_active
+    antes de emitir novo access token (TokenRevokedError -> 401).
+
+  O revoke_all_by_user chamado em deactivate continua no-op no
+  adapter de dev, mas o bloqueio efetivo eh feito pela checagem
+  de is_active nos dois fluxos acima.
+}

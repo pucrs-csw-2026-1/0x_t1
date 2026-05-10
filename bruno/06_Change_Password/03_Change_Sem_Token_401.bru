@@ -1,0 +1,22 @@
+meta {
+  name: 03 Change Password Sem Token (401)
+  type: http
+  seq: 3
+}
+
+put {
+  url: {{baseUrl}}/users/me/password
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "current_password": "{{password}}",
+    "new_password": "OutraSenha@123"
+  }
+}
+
+assert {
+  res.status: eq 401
+}

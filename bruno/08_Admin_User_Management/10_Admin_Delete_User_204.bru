@@ -1,0 +1,27 @@
+meta {
+  name: 10 Admin Delete User (204)
+  type: http
+  seq: 10
+}
+
+delete {
+  url: {{baseUrl}}/admin/users/{{target_user_id}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_access_token}}
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  US-18: admin desativa o usuario alvo (soft delete via service).
+  Apos rodar este request, o usuario alvo.admin@example.com fica
+  inativo — re-runs subsequentes da pasta 08 vao precisar de um
+  novo target (basta hard-deletar o item do DDB ou criar outro
+  email no request 01).
+}

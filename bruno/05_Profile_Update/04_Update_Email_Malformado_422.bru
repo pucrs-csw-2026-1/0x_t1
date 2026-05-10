@@ -1,0 +1,30 @@
+meta {
+  name: 04 Update Email Malformado (422)
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{baseUrl}}/users/me
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{access_token}}
+}
+
+body:json {
+  {
+    "email": "nao-eh-email"
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  Email malformado eh validado pelo dominio (InvalidEmailError) e o
+  router mapeia para 422 (UNPROCESSABLE_CONTENT).
+}

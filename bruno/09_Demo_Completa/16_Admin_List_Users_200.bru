@@ -1,0 +1,43 @@
+meta {
+  name: 16 Admin List Users (200)
+  type: http
+  seq: 16
+}
+
+get {
+  url: {{baseUrl}}/admin/users?limit=10
+  body: none
+  auth: bearer
+}
+
+params:query {
+  limit: 10
+}
+
+auth:bearer {
+  token: {{seed_admin_access_token}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.items: isDefined
+}
+
+tests {
+  test("US-14: response tem items array", function() {
+    expect(res.body.items).to.be.an("array");
+  });
+
+  test("US-14: senha nunca eh exposta nos items", function() {
+    res.body.items.forEach(function(item) {
+      expect(item).to.not.have.property("password");
+      expect(item).to.not.have.property("hashed_password");
+    });
+  });
+}
+
+docs {
+  Capitulo 4 - US-14 listagem administrativa de usuarios com
+  paginacao por cursor opaco. Aqui usamos limit=10 (suficiente
+  para a demo); para exercer o cursor ver pasta 04_Admin_Listing.
+}

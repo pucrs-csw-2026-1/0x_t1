@@ -1,8 +1,11 @@
-from typing import Iterable
-
 from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.domain.exceptions import (
+    AccessLevelNotFoundError,
     EmailAlreadyExistsError,
+    InvalidCredentialsError,
+    InvalidPaginationError,
+    SamePasswordError,
+    UsernameAlreadyExistsError,
     UserNotFoundError,
 )
 from app.domain.user import (
@@ -12,18 +15,24 @@ from app.domain.user import (
     Username,
     validate_raw_password,
 )
+from app.ports.access_level_repository import AccessLevelRepository
 from app.ports.password_hasher import PasswordHasher
-from app.ports.user_repository import UserRepository
+from app.ports.refresh_token_repository import RefreshTokenRepository
+from app.ports.user_repository import UserPage, UserRepository
 
 
 class UserService:
     def __init__(
         self,
         user_repo: UserRepository,
+        access_level_repo: AccessLevelRepository,
         password_hasher: PasswordHasher | None = None,
+        refresh_token_repo: RefreshTokenRepository | None = None,
     ) -> None:
         self._user_repo = user_repo
+        self._access_level_repo = access_level_repo
         self._hasher: PasswordHasher = password_hasher or BcryptPasswordHasher()
+        self._refresh_token_repo = refresh_token_repo
 
     def get_user_by_id(self, user_id: str) -> User:
         """Busca e retorna o usuário pelo ID.
@@ -36,6 +45,17 @@ class UserService:
             raise UserNotFoundError(user_id)
         return user
 
+    def list_users(self, limit: int = 20, cursor: str | None = None) -> UserPage:
+        """Lista usuários paginadamente.
+
+        Raises:
+            InvalidPaginationError: se cursor for fornecido e não corresponder
+            a um usuário existente;
+        """
+        if cursor is not None and self._user_repo.find_by_id(cursor) is None:
+            raise InvalidPaginationError(f"Cursor inválido: {cursor}")
+        return self._user_repo.find_all(limit=limit, cursor=cursor)
+
     def register(
         self,
         first_name: str,
@@ -43,12 +63,12 @@ class UserService:
         username: str,
         email: str,
         password: str,
-        access_level: Iterable[str] | None = None,
     ) -> User:
         """Registra um novo usuário validando dados, hasheando a senha e persistindo.
 
         Raises:
             EmailAlreadyExistsError: se já existir usuário com o mesmo e-mail.
+            AccessLevelNotFoundError: se o nível de acesso não for encontrado.
             InvalidEmailError, WeakPasswordError, InvalidUsernameError:
                 propagadas do domínio.
         """
@@ -68,6 +88,11 @@ class UserService:
         hashed = self._hasher.hash(password)
         hashed_vo = HashedPassword(hashed)
 
+        # Busca IDs de níveis de acesso
+        level = self._access_level_repo.find_by_title("user")
+        if not level:
+            raise AccessLevelNotFoundError("user")
+
         # Cria entidade e persiste
         user = User(
             username=username_vo,
@@ -75,8 +100,144 @@ class UserService:
             hashed_password=hashed_vo,
             first_name=first_name,
             last_name=last_name,
-            access_level=list(access_level or []),
+            access_level=[level.id],
         )
 
+        saved = self._user_repo.save(user)
+        return saved
+
+    def update_profile(
+        self,
+        user_id: str,
+        first_name: str | None = None,
+        last_name: str | None = None,
+        email: str | None = None,
+        username: str | None = None,
+    ) -> User:
+        """Atualiza campos do perfil do próprio usuário.
+
+        Raises:
+            UserNotFoundError: se o usuário não for encontrado.
+            EmailAlreadyExistsError: se o novo email já estiver em uso.
+            UsernameAlreadyExistsError: se o novo username já estiver em uso.
+            InvalidEmailError, InvalidUsernameError, InvalidNameError:
+                propagadas do domínio.
+        """
+        user = self.get_user_by_id(user_id)
+
+        if email is not None:
+            email_vo = Email(email)
+            existing = self._user_repo.find_by_email(email_vo)
+            if existing is not None and existing.id != user_id:
+                raise EmailAlreadyExistsError(email)
+            user.change_email(email_vo)
+
+        if username is not None:
+            username_vo = Username(username)
+            existing = self._user_repo.find_by_username(username_vo)
+            if existing is not None and existing.id != user_id:
+                raise UsernameAlreadyExistsError(username)
+            user.change_username(username_vo)
+
+        if first_name is not None or last_name is not None:
+            user.change_name(
+                first_name if first_name is not None else user.first_name,
+                last_name if last_name is not None else user.last_name,
+            )
+
+        return self._user_repo.save(user)
+
+    def change_password(
+        self,
+        user_id: str,
+        current_password: str,
+        new_password: str,
+    ) -> User:
+        """Troca a senha do usuário autenticado.
+
+        Raises:
+            UserNotFoundError: se o usuário não for encontrado.
+            InvalidCredentialsError: se current_password estiver incorreta.
+            SamePasswordError: se new_password for igual à senha atual.
+            WeakPasswordError: se new_password não atender às regras de domínio.
+        """
+        user = self.get_user_by_id(user_id)
+
+        if not self._hasher.verify(current_password, user.hashed_password.value):
+            raise InvalidCredentialsError()
+
+        if self._hasher.verify(new_password, user.hashed_password.value):
+            raise SamePasswordError()
+
+        validate_raw_password(new_password)
+
+        hashed = self._hasher.hash(new_password)
+        user.change_password(HashedPassword(hashed))
+
+        return self._user_repo.save(user)
+
+    def admin_update(
+        self,
+        admin_id: str,
+        target_user_id: str,
+        access_level: list[str] | None = None,
+        is_active: bool | None = None,
+    ) -> User:
+        """Atualiza access_level e/ou is_active de um usuário como admin.
+
+        Raises:
+            ValueError: se admin_id == target_user_id.
+            UserNotFoundError: se o usuário alvo não for encontrado.
+            AccessLevelNotFoundError: se algum UUID de access_level for inválido.
+        """
+        if admin_id == target_user_id:
+            raise ValueError("Admin não pode alterar a si mesmo.")
+
+        user = self.get_user_by_id(target_user_id)
+
+        if access_level is not None:
+            for level_id in access_level:
+                if self._access_level_repo.find_by_id(level_id) is None:
+                    raise AccessLevelNotFoundError(level_id)
+            user.access_level = access_level
+            user._touch()
+
+        if is_active is not None:
+            if is_active:
+                user.activate()
+            else:
+                user.deactivate()
+
+        return self._user_repo.save(user)
+
+    def deactivate(self, user_id: str) -> User:
+        """Desativa um usuário (soft delete). Bloqueia logins e refreshes.
+
+        Marca is_active=False e atualiza updated_at (idempotente). O registro
+        físico é preservado.
+
+        A chamada a revoke_all_by_user é mantida para compatibilidade com o
+        contrato do RefreshTokenRepository, mas o adapter atual
+        (InMemoryRefreshTokenRepository) não rastreia tokens emitidos no
+        fluxo de login, então a revogação explícita é no-op. O bloqueio
+        efetivo da sessão é feito em dois pontos:
+        - AuthService.login rejeita credenciais de usuários inativos;
+        - AuthService.refresh verifica is_active antes de emitir novo
+          access token (impede refresh de tokens emitidos pré-deactivate).
+
+        Raises:
+            UserNotFoundError: se o usuário não for encontrado.
+        """
+        user = self.get_user_by_id(user_id)
+
+        # Revoga todos os refresh tokens ativos do usuário (se repositório foi injetado)
+        if self._refresh_token_repo is not None:
+            self._refresh_token_repo.revoke_all_by_user(user_id)
+
+        # Marca como inativo
+        # (idempotente: se já estava inativo, apenas atualiza updated_at)
+        user.deactivate()
+
+        # Persiste a alteração
         saved = self._user_repo.save(user)
         return saved

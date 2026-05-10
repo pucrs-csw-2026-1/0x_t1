@@ -1,0 +1,24 @@
+meta {
+  name: 20 Admin Get Inexistente (404)
+  type: http
+  seq: 20
+}
+
+get {
+  url: {{baseUrl}}/admin/users/00000000-0000-0000-0000-000000000000
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{seed_admin_access_token}}
+}
+
+assert {
+  res.status: eq 404
+}
+
+docs {
+  Capitulo 4 - Tratamento de excecao: usuario inexistente
+  retorna 404 (UserNotFoundError mapeado).
+}

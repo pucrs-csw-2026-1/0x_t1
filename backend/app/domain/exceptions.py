@@ -41,11 +41,25 @@ class EmailAlreadyExistsError(DomainError):
         super().__init__(f"Email já cadastrado: {email}")
 
 
+class UsernameAlreadyExistsError(DomainError):
+    """Exceção para nome de usuário já existente."""
+
+    def __init__(self, username: str) -> None:
+        super().__init__(f"Nome de usuário já cadastrado: {username}")
+
+
 class InvalidCredentialsError(DomainError):
     """Exceção para credenciais inválidas."""
 
     def __init__(self) -> None:
         super().__init__("Credenciais inválidas.")
+
+
+class SamePasswordError(DomainError):
+    """Exceção para nova senha igual à senha atual."""
+
+    def __init__(self) -> None:
+        super().__init__("A nova senha não pode ser igual à senha atual.")
 
 
 class InvalidTokenError(DomainError):
@@ -81,3 +95,17 @@ class UserNotFoundError(DomainError):
 
     def __init__(self, user_id: str) -> None:
         super().__init__(f"Usuário não encontrado: {user_id}")
+
+
+class AccessLevelNotFoundError(DomainError):
+    """Exceção para nível de acesso não encontrado."""
+
+    def __init__(self, title: str) -> None:
+        super().__init__(f"Nível de acesso não encontrado: {title}")
+
+
+class InvalidPaginationError(DomainError):
+    """Exceção para parâmetros de paginação inválidos."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Parâmetros de paginação inválidos: {reason}")

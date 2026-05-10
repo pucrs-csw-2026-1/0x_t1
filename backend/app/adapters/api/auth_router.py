@@ -1,7 +1,7 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.adapters.api.dependencies import get_auth_service, get_current_user
 from app.application.auth_service import AuthService
@@ -16,22 +16,56 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: Literal["bearer"] = "bearer"
+    access_token: str = Field(
+        ...,
+        description="JWT de acesso. Tempo de vida curto (default 30min).",
+        examples=[
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiZDBiYWJjMy1iZDkzLTQ0M2QtYWVmYi01MTkzZjVlMWYwOGMiLCJzY29wZXMiOlsidXNlciJdLCJleHAiOjE3NjI4NDc2MDB9.fake-signature"
+        ],
+    )
+    refresh_token: str = Field(
+        ...,
+        description="Token de renovação. Tempo de vida longo (default 7 dias).",
+        examples=[
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiZDBiYWJjMy1iZDkzLTQ0M2QtYWVmYi01MTkzZjVlMWYwOGMiLCJ0eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2MzQ1MjQwMH0.fake-signature"
+        ],
+    )
+    token_type: Literal["bearer"] = Field(
+        "bearer", description="Tipo do token. Sempre 'bearer'."
+    )
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = Field(
+        ...,
+        description="Refresh token recebido no login.",
+        examples=[
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiZDBiYWJjMy1iZDkzLTQ0M2QtYWVmYi01MTkzZjVlMWYwOGMiLCJ0eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2MzQ1MjQwMH0.fake-signature"
+        ],
+    )
 
 
 class RefreshTokenResponse(BaseModel):
-    access_token: str
-    token_type: Literal["bearer"] = "bearer"
+    access_token: str = Field(
+        ...,
+        description="Novo JWT de acesso. Mesmo formato do login.",
+        examples=[
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiZDBiYWJjMy1iZDkzLTQ0M2QtYWVmYi01MTkzZjVlMWYwOGMiLCJzY29wZXMiOlsidXNlciJdLCJleHAiOjE3NjI4NDc2MDB9.fake-signature"
+        ],
+    )
+    token_type: Literal["bearer"] = Field(
+        "bearer", description="Tipo do token. Sempre 'bearer'."
+    )
 
 
 class LogoutRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = Field(
+        ...,
+        description="Refresh token a ser revogado.",
+        examples=[
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiZDBiYWJjMy1iZDkzLTQ0M2QtYWVmYi01MTkzZjVlMWYwOGMiLCJ0eXBlIjoicmVmcmVzaCIsImV4cCI6MTc2MzQ1MjQwMH0.fake-signature"
+        ],
+    )
 
 
 @router.post(
@@ -100,7 +134,7 @@ def refresh(
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    return RefreshTokenResponse(access_token=access_token)
+    return RefreshTokenResponse(access_token=access_token, token_type="bearer")
 
 
 @router.post(

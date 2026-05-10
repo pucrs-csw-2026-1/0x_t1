@@ -1,0 +1,19 @@
+meta {
+  name: 11 Admin Delete Inexistente (404)
+  type: http
+  seq: 11
+}
+
+delete {
+  url: {{baseUrl}}/admin/users/00000000-0000-0000-0000-000000000000
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{admin_access_token}}
+}
+
+assert {
+  res.status: eq 404
+}
