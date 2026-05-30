@@ -9,7 +9,7 @@ from unittest.mock import create_autospec
 import pytest
 from jose import jwt
 
-from app.adapters.config.settings import Settings
+from app.adapters.config.settings import Settings, read_key
 from app.adapters.in_memory_refresh_token_repository import (
     InMemoryRefreshTokenRepository,
 )
@@ -27,10 +27,10 @@ from app.ports.password_hasher import PasswordHasher
 from app.ports.token_provider import TokenProvider
 from app.ports.user_repository import UserRepository
 
-SECRET = "chave-secreta-de-teste"
-ALGORITHM = "HS256"
+ALGORITHM = "RS256"
 USER_ID = "usuario-123"
 SCOPES = ["user:read", "user:write"]
+PRIVATE_KEY = read_key("keys/dev_private.pem")
 
 
 @pytest.fixture
@@ -51,7 +51,6 @@ def token_provider_mock() -> TokenProvider:
 @pytest.fixture
 def settings() -> Settings:
     return Settings(
-        secret_key=SECRET,
         algorithm=ALGORITHM,
         access_token_expire_minutes=30,
         refresh_token_expire_days=7,
@@ -336,7 +335,7 @@ class TestAuthServiceRefresh:
             "sub": USER_ID,
             "exp": datetime.now(timezone.utc) - timedelta(hours=1),
         }
-        refresh_token = jwt.encode(expired_payload, SECRET, algorithm=ALGORITHM)
+        refresh_token = jwt.encode(expired_payload, PRIVATE_KEY, algorithm=ALGORITHM)
 
         with pytest.raises(TokenExpiredError):
             auth_service.refresh(refresh_token)
@@ -377,7 +376,7 @@ class TestAuthServiceRefresh:
             "revoked": True,
             "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
         }
-        refresh_token = jwt.encode(revoked_payload, SECRET, algorithm=ALGORITHM)
+        refresh_token = jwt.encode(revoked_payload, PRIVATE_KEY, algorithm=ALGORITHM)
 
         with pytest.raises(TokenRevokedError):
             auth_service.refresh(refresh_token)
