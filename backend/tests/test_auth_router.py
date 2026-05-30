@@ -16,7 +16,7 @@ from app.adapters.api.dependencies import (
     get_auth_service,
     get_current_user,
 )
-from app.adapters.config.settings import Settings
+from app.adapters.config.settings import Settings, read_key
 from app.adapters.config.settings import settings as global_settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.auth_service import AuthService
@@ -27,10 +27,10 @@ from app.domain.exceptions import (
     TokenRevokedError,
 )
 
-SECRET = "chave-secreta-de-teste"
-ALGORITHM = "HS256"
+ALGORITHM = "RS256"
 USER_ID = "usuario-123"
 SCOPES = ["user:read", "user:write"]
+PRIVATE_KEY = read_key("keys/dev_private.pem")
 
 
 @pytest.fixture
@@ -48,7 +48,6 @@ def client(app: FastAPI) -> TestClient:
 @pytest.fixture
 def settings() -> Settings:
     return Settings(  # type: ignore[call-arg]
-        secret_key=SECRET,
         algorithm=ALGORITHM,
         access_token_expire_minutes=30,
         refresh_token_expire_days=7,
@@ -181,7 +180,7 @@ class TestAuthRouterRefresh:
             "sub": USER_ID,
             "exp": datetime.now(timezone.utc) - timedelta(hours=1),
         }
-        refresh_token = jwt.encode(expired_payload, SECRET, algorithm=ALGORITHM)
+        refresh_token = jwt.encode(expired_payload, PRIVATE_KEY, algorithm=ALGORITHM)
 
         response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
 
@@ -206,7 +205,7 @@ class TestAuthRouterRefresh:
             "revoked": True,
             "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
         }
-        refresh_token = jwt.encode(revoked_payload, SECRET, algorithm=ALGORITHM)
+        refresh_token = jwt.encode(revoked_payload, PRIVATE_KEY, algorithm=ALGORITHM)
 
         response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
 
@@ -334,8 +333,8 @@ class TestAuthRouterLogoutAuthProtection:
         }
         access_token = jwt.encode(
             expired_payload,
-            global_settings.secret_key,
-            algorithm=global_settings.algorithm,
+            PRIVATE_KEY,
+            algorithm="RS256",
         )
 
         response = client.post(
@@ -364,9 +363,7 @@ class TestAuthRouterLogoutAuthProtection:
             "scopes": ["user"],
             "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
         }
-        access_token = jwt.encode(
-            payload, "chave-de-atacante", algorithm=global_settings.algorithm
-        )
+        access_token = jwt.encode(payload, "chave-de-atacante-hs256", algorithm="HS256")
 
         response = client.post(
             "/auth/logout",

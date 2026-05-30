@@ -3,27 +3,39 @@ from typing import Any
 
 from jose import ExpiredSignatureError, JWTError, jwt
 
-from app.adapters.config.settings import Settings
+from app.adapters.config.settings import Settings, read_key
 from app.domain.exceptions import InvalidTokenError, TokenExpiredError
 from app.ports.token_provider import TokenProvider
 from app.ports.user_repository import UserRepository
 
 
 class JwtTokenProvider(TokenProvider):
+    """Emite e valida JWTs assinados em RS256 (US-28).
+
+    Assina com a chave privada e valida com a pública (assimétrico): os demais
+    microserviços validam o token apenas com a chave pública publicada no
+    JWKS, sem compartilhar segredo. Todo token carrega `principal_type`
+    distinguindo pessoa (`user`) de máquina (`service`, em iteração futura).
+    """
+
     def __init__(
         self, settings: Settings, user_repository: UserRepository | None = None
     ) -> None:
         self._settings = settings
         self._user_repository = user_repository
+        self._private_key = read_key(settings.rsa_private_key_path)
+        self._public_key = read_key(settings.rsa_public_key_path)
+        self._headers = {"kid": settings.jwt_kid}
 
     def generate_access_token(self, user_id: str, scopes: list[str]) -> str:
-        """Gera um JWT de acesso com claims sub, scopes e exp."""
+        """Gera um JWT de acesso com claims sub, scopes, principal_type e exp."""
         expire = datetime.now(timezone.utc) + timedelta(
             minutes=self._settings.access_token_expire_minutes
         )
         payload: dict[str, Any] = {
             "sub": user_id,
             "scopes": scopes,
+            "principal_type": "user",
             "exp": expire,
         }
         # Optionally include user email in the token if a user repository is available
@@ -36,29 +48,36 @@ class JwtTokenProvider(TokenProvider):
             # Be defensive: do not break token generation if repository lookup fails
             pass
         token: str = jwt.encode(
-            payload, self._settings.secret_key, algorithm=self._settings.algorithm
+            payload,
+            self._private_key,
+            algorithm=self._settings.algorithm,
+            headers=self._headers,
         )
         return token
 
     def generate_refresh_token(
         self, user_id: str, scopes: list[str] | None = None
     ) -> str:
-        """Gera um JWT de refresh com claims sub, scopes e exp."""
+        """Gera um JWT de refresh com claims sub, scopes, principal_type e exp."""
         expire = datetime.now(timezone.utc) + timedelta(
             days=self._settings.refresh_token_expire_days
         )
         payload: dict[str, Any] = {
             "sub": user_id,
             "scopes": scopes or [],
+            "principal_type": "user",
             "exp": expire,
         }
         token: str = jwt.encode(
-            payload, self._settings.secret_key, algorithm=self._settings.algorithm
+            payload,
+            self._private_key,
+            algorithm=self._settings.algorithm,
+            headers=self._headers,
         )
         return token
 
     def decode_token(self, token: str) -> dict[str, Any]:
-        """Decodifica e valida o JWT, retornando o payload.
+        """Decodifica e valida o JWT (assinatura RS256), retornando o payload.
 
         Raises:
             TokenExpiredError: se o token estiver expirado.
@@ -67,7 +86,7 @@ class JwtTokenProvider(TokenProvider):
         try:
             payload: dict[str, Any] = jwt.decode(
                 token,
-                self._settings.secret_key,
+                self._public_key,
                 algorithms=[self._settings.algorithm],
             )
         except ExpiredSignatureError:

@@ -13,7 +13,7 @@ from jose import jwt
 
 from app.adapters.api.dependencies import get_current_user, get_user_service
 from app.adapters.api.user_router import router
-from app.adapters.config.settings import Settings, settings
+from app.adapters.config.settings import read_key, settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.user_service import UserService
 from app.domain.exceptions import (
@@ -29,6 +29,9 @@ from app.domain.exceptions import (
 )
 from app.domain.user import Gender, User
 from tests.fakes.user_repository import FakeUserRepository
+
+# Chave privada de dev para forjar tokens nos testes de proteção (assinatura RS256).
+PRIVATE_KEY = read_key("keys/dev_private.pem")
 
 
 @pytest.fixture
@@ -368,9 +371,7 @@ class TestUserRouterAuthProtection:
             "scopes": ["user"],
             "exp": datetime.now(timezone.utc) - timedelta(hours=1),
         }
-        token = jwt.encode(
-            expired_payload, settings.secret_key, algorithm=settings.algorithm
-        )
+        token = jwt.encode(expired_payload, PRIVATE_KEY, algorithm="RS256")
 
         response = client.get(
             "/users/me",
@@ -385,14 +386,14 @@ class TestUserRouterAuthProtection:
         self,
         client: TestClient,
     ) -> None:
-        """CT-05: token assinado com chave diferente retorna 401."""
-        outra_chave = "chave-de-atacante-diferente-do-servidor"
+        """CT-05: token com assinatura adulterada retorna 401."""
         payload: dict[str, Any] = {
             "sub": "user-123",
-            "scopes": ["user"],
+            "scopes": ["participant"],
             "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
         }
-        token = jwt.encode(payload, outra_chave, algorithm=settings.algorithm)
+        valido = jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
+        token = valido.rsplit(".", 1)[0] + ".assinatura_adulterada"
 
         response = client.get(
             "/users/me",
@@ -409,10 +410,10 @@ class TestUserRouterAuthProtection:
     ) -> None:
         """CT-06: token bem assinado mas sem claim 'sub' retorna 401."""
         payload: dict[str, Any] = {
-            "scopes": ["user"],
+            "scopes": ["participant"],
             "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
         }
-        token = jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+        token = jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
 
         response = client.get(
             "/users/me",
@@ -438,15 +439,13 @@ class TestUserRouterAuthProtection:
         self,
         client: TestClient,
     ) -> None:
-        """CT-08: token assinado com algoritmo diferente do esperado retorna 401."""
-        outras_settings = Settings(  # type: ignore[call-arg]
-            secret_key=settings.secret_key,
-            algorithm="HS512",
-            access_token_expire_minutes=30,
-            refresh_token_expire_days=7,
-        )
-        outro_provider = JwtTokenProvider(outras_settings)
-        token = outro_provider.generate_access_token("user-123", scopes=["user"])
+        """CT-08: token HS256 (segredo simétrico) é rejeitado — só RS256 vale."""
+        payload: dict[str, Any] = {
+            "sub": "user-123",
+            "scopes": ["participant"],
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+        }
+        token = jwt.encode(payload, "segredo-hs256-atacante", algorithm="HS256")
 
         response = client.get(
             "/users/me",
