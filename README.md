@@ -445,6 +445,7 @@ Os JWTs são assinados em **RS256** (assimétrico): o Auth assina com a **chave 
 
 - O header de cada token traz um `kid`; o consumidor casa esse `kid` com a chave do JWKS.
 - Todo token carrega o claim `principal_type`: `user` (pessoa, via login) ou `service` (máquina, via OAuth2 **client_credentials** em `POST /auth/token` — o serviço autentica com `client_id`/`client_secret` e recebe um token com os scopes do cliente, sem refresh).
+- **Clientes de serviço**: registry configurável (`SERVICE_CLIENTS` em JSON, multi-cliente; ou o cliente único de dev). Atrás de um port `ServiceClientRepository`, trocável por um adapter DynamoDB sem mexer no fluxo.
 - **Chaves**: em dev, par RS256 versionado em [`backend/keys/`](backend/keys/) (dev-only). Em produção, monte chaves de um cofre de segredos (AWS Secrets Manager — US-23) via `RSA_PRIVATE_KEY_PATH`/`RSA_PUBLIC_KEY_PATH`; a chave privada de produção nunca é commitada.
 
 ### Ciclo de vida dos tokens (login → uso → refresh → logout)
