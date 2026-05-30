@@ -17,7 +17,9 @@ auth:bearer {
 body:json {
   {
     "first_name": "Juca Atualizado",
-    "last_name": "Bala Atualizado"
+    "last_name": "Bala Atualizado",
+    "age": 41,
+    "city": "Florianopolis"
   }
 }
 
@@ -28,12 +30,19 @@ assert {
   res.body.last_name: eq Bala Atualizado
   res.body.email: eq {{email}}
   res.body.username: eq {{username}}
+  res.body.age: eq 41
+  res.body.city: eq Florianopolis
 }
 
 tests {
   test("US-15: PATCH parcial preserva campos nao informados", function() {
     expect(res.body.email).to.equal(bru.getVar("email"));
     expect(res.body.username).to.equal(bru.getVar("username"));
+  });
+
+  test("US-26: PATCH atualiza demografia (age, city)", function() {
+    expect(res.body.age).to.equal(41);
+    expect(res.body.city).to.equal("Florianopolis");
   });
 
   test("US-15: senha nunca eh exposta", function() {
@@ -43,7 +52,7 @@ tests {
 }
 
 docs {
-  Apenas first_name e last_name sao alterados — email e username
-  permanecem para nao quebrar o flow de login/refresh dos testes
-  seguintes.
+  Altera first_name, last_name e a demografia (age, city) — email e
+  username permanecem para nao quebrar o flow de login/refresh dos
+  testes seguintes.
 }
