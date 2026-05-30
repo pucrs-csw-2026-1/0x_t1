@@ -40,10 +40,14 @@ class Settings(BaseSettings):
     seed_admin_email: str = "admin@local.dev"
     seed_admin_password: str = "Admin@123"
 
-    # Cliente de serviço (OAuth2 client_credentials — US-28 parte 2). Em dev,
-    # um cliente seedado por configuração (secret em texto plano, como o
-    # seed_admin_password). Em produção, sobrescreva via env / cofre de segredos.
-    # scopes em lista separada por vírgula.
+    # Clientes de serviço (OAuth2 client_credentials — US-28 parte 2).
+    #
+    # Multi-cliente: defina SERVICE_CLIENTS como um JSON, ex.:
+    #   [{"client_id": "metrics-service", "secret": "...", "scopes": ["metrics:read"]},
+    #    {"client_id": "reports-service", "secret": "...", "scopes": ["reports:read"]}]
+    # Quando vazio, cai no cliente único abaixo (default de dev). Em produção,
+    # sobrescreva via env / cofre de segredos (nunca commite secrets de prod).
+    service_clients: str | None = None
     service_client_id: str = "metrics-service"
     service_client_secret: str = "dev-metrics-secret"
     service_client_scopes: str = "metrics:read"
