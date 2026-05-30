@@ -21,6 +21,7 @@ from app.adapters.config.settings import settings as global_settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.auth_service import AuthService
 from app.domain.exceptions import (
+    InvalidClientError,
     InvalidCredentialsError,
     InvalidTokenError,
     TokenExpiredError,
@@ -376,3 +377,88 @@ class TestAuthRouterLogoutAuthProtection:
         assert response.status_code == 401
         assert response.json()["detail"] == "Token inválido."
         auth_service_mock.logout.assert_not_called()
+
+
+class TestAuthRouterClientCredentials:
+    """Testes do endpoint POST /auth/token (US-28 parte 2)."""
+
+    def test_client_credentials_valido_retorna_200(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-CC-01: client_id/secret válidos retornam 200 com token de serviço."""
+        auth_service_mock = create_autospec(AuthService, instance=True)
+        auth_service_mock.issue_service_token.return_value = {
+            "access_token": "svc.jwt",
+            "token_type": "bearer",
+        }
+        app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
+
+        response = client.post(
+            "/auth/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": "metrics-service",
+                "client_secret": "dev-metrics-secret",
+            },
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["access_token"] == "svc.jwt"
+        assert data["token_type"] == "bearer"
+        assert "refresh_token" not in data
+        auth_service_mock.issue_service_token.assert_called_once_with(
+            "metrics-service", "dev-metrics-secret"
+        )
+
+    def test_credenciais_de_cliente_invalidas_retorna_401(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-CC-02: client_secret errado / cliente desconhecido retorna 401."""
+        auth_service_mock = create_autospec(AuthService, instance=True)
+        auth_service_mock.issue_service_token.side_effect = InvalidClientError()
+        app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
+
+        response = client.post(
+            "/auth/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": "metrics-service",
+                "client_secret": "errado",
+            },
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 401
+        assert response.headers["www-authenticate"] == "Bearer"
+
+    def test_grant_type_nao_suportado_retorna_400(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        """CT-CC-03: grant_type diferente de client_credentials retorna 400."""
+        auth_service_mock = create_autospec(AuthService, instance=True)
+        app.dependency_overrides[get_auth_service] = lambda: auth_service_mock
+
+        response = client.post(
+            "/auth/token",
+            data={
+                "grant_type": "password",
+                "client_id": "metrics-service",
+                "client_secret": "dev-metrics-secret",
+            },
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "unsupported_grant_type"
+        auth_service_mock.issue_service_token.assert_not_called()

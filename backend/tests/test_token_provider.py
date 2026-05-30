@@ -54,6 +54,17 @@ class TestJwtTokenProvider:
         assert header["alg"] == "RS256"
         assert header["kid"] == settings.jwt_kid
 
+    # CT-01c (US-28 p2): service token carrega principal_type=service e sub=client_id
+    def test_service_token_principal_type_service(
+        self, provider: JwtTokenProvider
+    ) -> None:
+        token = provider.generate_service_token("metrics-service", ["metrics:read"])
+        payload = jwt.decode(token, PUBLIC_KEY, algorithms=[ALGORITHM])
+
+        assert payload["sub"] == "metrics-service"
+        assert payload["principal_type"] == "service"
+        assert payload["scopes"] == ["metrics:read"]
+
     # CT-02: refresh token contém claims sub, scopes e exp
     def test_refresh_token_contem_claims_obrigatorios(
         self, provider: JwtTokenProvider
