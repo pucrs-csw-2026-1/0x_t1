@@ -7,6 +7,13 @@ O Auth assina JWTs em **RS256** (par de chaves) e publica a chave pública via
 **JWKS**. Cada serviço valida os tokens **localmente, com a chave pública** — sem
 compartilhar segredo e sem chamar o Auth a cada request.
 
+> **Você (consumidor) NÃO cria nenhum par de chaves.** O par RS256 existe só no
+> Auth. Para **validar** tokens, use apenas a **chave pública do JWKS** (é pública,
+> não é credencial, e não há nada a gerar). O único segredo que um serviço precisa
+> é o seu **`client_secret`** — usado para obter um token de serviço via
+> client_credentials (§3) — e isso é uma **credencial de cliente, não uma chave
+> RSA**. Gerar chaves próprias quebraria a validação (chave errada).
+
 ---
 
 ## 1. Conceitos
