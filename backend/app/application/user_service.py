@@ -10,6 +10,7 @@ from app.domain.exceptions import (
 )
 from app.domain.user import (
     Email,
+    Gender,
     HashedPassword,
     User,
     Username,
@@ -63,14 +64,20 @@ class UserService:
         username: str,
         email: str,
         password: str,
+        age: int | None = None,
+        area: str | None = None,
+        gender: Gender | None = None,
+        city: str | None = None,
     ) -> User:
         """Registra um novo usuário validando dados, hasheando a senha e persistindo.
+
+        Os campos demográficos (age, area, gender, city) são opcionais.
 
         Raises:
             EmailAlreadyExistsError: se já existir usuário com o mesmo e-mail.
             AccessLevelNotFoundError: se o nível de acesso não for encontrado.
-            InvalidEmailError, WeakPasswordError, InvalidUsernameError:
-                propagadas do domínio.
+            InvalidEmailError, WeakPasswordError, InvalidUsernameError,
+            InvalidAgeError, InvalidProfileFieldError: propagadas do domínio.
         """
         # Cria value objects (validam email/username)
         email_vo = Email(email)
@@ -100,6 +107,10 @@ class UserService:
             hashed_password=hashed_vo,
             first_name=first_name,
             last_name=last_name,
+            age=age,
+            area=area,
+            gender=gender,
+            city=city,
             access_level=[level.id],
         )
 
@@ -113,15 +124,22 @@ class UserService:
         last_name: str | None = None,
         email: str | None = None,
         username: str | None = None,
+        age: int | None = None,
+        area: str | None = None,
+        gender: Gender | None = None,
+        city: str | None = None,
     ) -> User:
         """Atualiza campos do perfil do próprio usuário.
+
+        Atualização parcial: apenas os campos informados (não-None) são
+        alterados, incluindo os demográficos (age, area, gender, city).
 
         Raises:
             UserNotFoundError: se o usuário não for encontrado.
             EmailAlreadyExistsError: se o novo email já estiver em uso.
             UsernameAlreadyExistsError: se o novo username já estiver em uso.
-            InvalidEmailError, InvalidUsernameError, InvalidNameError:
-                propagadas do domínio.
+            InvalidEmailError, InvalidUsernameError, InvalidNameError,
+            InvalidAgeError, InvalidProfileFieldError: propagadas do domínio.
         """
         user = self.get_user_by_id(user_id)
 
@@ -144,6 +162,9 @@ class UserService:
                 first_name if first_name is not None else user.first_name,
                 last_name if last_name is not None else user.last_name,
             )
+
+        if any(v is not None for v in (age, area, gender, city)):
+            user.change_demographics(age=age, area=area, gender=gender, city=city)
 
         return self._user_repo.save(user)
 

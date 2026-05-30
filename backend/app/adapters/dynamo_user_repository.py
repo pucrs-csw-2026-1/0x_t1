@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import boto3
 from botocore.exceptions import ClientError
 
-from app.domain.user import Email, HashedPassword, User, Username
+from app.domain.user import Email, Gender, HashedPassword, User, Username
 from app.ports.user_repository import UserPage, UserRepository
 
 if TYPE_CHECKING:
@@ -71,7 +71,7 @@ class DynamoUserRepository(UserRepository):
         return UserPage(items=items, next_cursor=next_cursor)
 
     def _to_item(self, user: User) -> dict[str, Any]:
-        return {
+        item: dict[str, Any] = {
             "id": user.id,
             "email": user.email.value,
             "username": user.username.value,
@@ -83,8 +83,22 @@ class DynamoUserRepository(UserRepository):
             "created_at": user.created_at.isoformat(),
             "updated_at": user.updated_at.isoformat(),
         }
+        # Campos demográficos opcionais: omitidos do item quando ausentes
+        # para não gravar atributos NULL no DynamoDB.
+        if user.age is not None:
+            item["age"] = user.age
+        if user.area is not None:
+            item["area"] = user.area
+        if user.gender is not None:
+            item["gender"] = user.gender.value
+        if user.city is not None:
+            item["city"] = user.city
+        return item
 
     def _to_user(self, item: dict[str, Any]) -> User:
+        # DynamoDB devolve números como Decimal; converte idade de volta a int.
+        raw_age = item.get("age")
+        raw_gender = item.get("gender")
         return User(
             id=item["id"],
             email=Email(item["email"]),
@@ -92,6 +106,10 @@ class DynamoUserRepository(UserRepository):
             hashed_password=HashedPassword(item["hashed_password"]),
             first_name=item["first_name"],
             last_name=item["last_name"],
+            age=int(raw_age) if raw_age is not None else None,
+            area=item.get("area"),
+            gender=Gender(raw_gender) if raw_gender is not None else None,
+            city=item.get("city"),
             access_level=item.get("access_level", []),
             is_active=bool(item.get("is_active", True)),
             created_at=datetime.fromisoformat(item["created_at"]),
