@@ -444,7 +444,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 Os JWTs são assinados em **RS256** (assimétrico): o Auth assina com a **chave privada** e qualquer consumidor valida com a **chave pública**, publicada em `GET /.well-known/jwks.json`. Isso permite que outros microserviços (ex.: Metrics) validem os tokens **sem compartilhar segredo** — diferente do HS256 simétrico anterior, em que todo serviço precisaria da mesma chave para validar (e poderia forjar tokens).
 
 - O header de cada token traz um `kid`; o consumidor casa esse `kid` com a chave do JWKS.
-- Todo token carrega o claim `principal_type` (`user`) distinguindo identidade de pessoa de identidade de máquina (principal `service` via client_credentials virá em iteração futura).
+- Todo token carrega o claim `principal_type`: `user` (pessoa, via login) ou `service` (máquina, via OAuth2 **client_credentials** em `POST /auth/token` — o serviço autentica com `client_id`/`client_secret` e recebe um token com os scopes do cliente, sem refresh).
+- **Clientes de serviço**: registry configurável (`SERVICE_CLIENTS` em JSON, multi-cliente; ou o cliente único de dev). Atrás de um port `ServiceClientRepository`, trocável por um adapter DynamoDB sem mexer no fluxo.
 - **Chaves**: em dev, par RS256 versionado em [`backend/keys/`](backend/keys/) (dev-only). Em produção, monte chaves de um cofre de segredos (AWS Secrets Manager — US-23) via `RSA_PRIVATE_KEY_PATH`/`RSA_PUBLIC_KEY_PATH`; a chave privada de produção nunca é commitada.
 
 ### Ciclo de vida dos tokens (login → uso → refresh → logout)
@@ -550,6 +551,7 @@ A **documentação interativa completa** (com schemas Pydantic, exemplos auto-ge
 | Método | Rota | Descrição | Auth | Status esperados |
 |---|---|---|---|---|
 | `POST` | `/auth/login` | Autentica via OAuth2PasswordRequestForm e emite access + refresh tokens JWT | Pública | 200, 401 |
+| `POST` | `/auth/token` | OAuth2 client_credentials: autentica um serviço (client_id/secret) e emite token com `principal_type=service` | client_id/secret | 200, 400, 401 |
 | `POST` | `/auth/refresh` | Renova o access token usando o refresh token (no body) | Pública | 200, 401 |
 | `POST` | `/auth/logout` | Revoga o refresh token informado no body | Bearer | 204, 401 |
 

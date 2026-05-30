@@ -69,6 +69,13 @@ class InvalidCredentialsError(DomainError):
         super().__init__("Credenciais inválidas.")
 
 
+class InvalidClientError(DomainError):
+    """Exceção para credenciais de cliente de serviço inválidas (client_credentials)."""
+
+    def __init__(self) -> None:
+        super().__init__("Credenciais de cliente inválidas.")
+
+
 class SamePasswordError(DomainError):
     """Exceção para nova senha igual à senha atual."""
 

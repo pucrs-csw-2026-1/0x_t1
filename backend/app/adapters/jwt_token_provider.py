@@ -76,6 +76,30 @@ class JwtTokenProvider(TokenProvider):
         )
         return token
 
+    def generate_service_token(self, client_id: str, scopes: list[str]) -> str:
+        """Gera um access token de máquina (client_credentials).
+
+        Carrega `principal_type=service` e `sub=client_id` — distingue
+        identidade de máquina de identidade de pessoa. Sem refresh token
+        (padrão OAuth2 para client_credentials).
+        """
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=self._settings.access_token_expire_minutes
+        )
+        payload: dict[str, Any] = {
+            "sub": client_id,
+            "scopes": scopes,
+            "principal_type": "service",
+            "exp": expire,
+        }
+        token: str = jwt.encode(
+            payload,
+            self._private_key,
+            algorithm=self._settings.algorithm,
+            headers=self._headers,
+        )
+        return token
+
     def decode_token(self, token: str) -> dict[str, Any]:
         """Decodifica e valida o JWT (assinatura RS256), retornando o payload.
 

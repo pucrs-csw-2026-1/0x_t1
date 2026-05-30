@@ -10,6 +10,9 @@ import pytest
 from jose import jwt
 
 from app.adapters.config.settings import Settings, read_key
+from app.adapters.config_service_client_repository import (
+    ConfigServiceClientRepository,
+)
 from app.adapters.in_memory_refresh_token_repository import (
     InMemoryRefreshTokenRepository,
 )
@@ -17,6 +20,7 @@ from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.auth_service import AuthService
 from app.domain.access_level import Role
 from app.domain.exceptions import (
+    InvalidClientError,
     InvalidCredentialsError,
     InvalidTokenError,
     TokenExpiredError,
@@ -622,3 +626,52 @@ class TestAuthServiceInactiveUser:
 
         assert result["access_token"] == "access.jwt"
         assert result["refresh_token"] == "refresh.jwt"
+
+
+class TestAuthServiceClientCredentials:
+    """OAuth2 client_credentials — emissão de token de serviço (US-28 p2)."""
+
+    def _service_settings(self) -> Settings:
+        return Settings(  # type: ignore[call-arg]
+            service_client_id="svc-x",
+            service_client_secret="sek-x",
+            service_client_scopes="metrics:read",
+        )
+
+    def _auth(self, settings_obj: Settings, with_repo: bool = True) -> AuthService:
+        return AuthService(
+            user_repository=create_autospec(UserRepository, instance=True),
+            password_hasher=create_autospec(PasswordHasher, instance=True),
+            token_provider=JwtTokenProvider(settings_obj),
+            service_client_repository=(
+                ConfigServiceClientRepository(settings_obj) if with_repo else None
+            ),
+        )
+
+    def test_client_credentials_valido_emite_token_de_servico(self) -> None:
+        s = self._service_settings()
+        auth = self._auth(s)
+
+        data = auth.issue_service_token("svc-x", "sek-x")
+        claims = JwtTokenProvider(s).decode_token(data["access_token"])
+
+        assert data["token_type"] == "bearer"
+        assert "refresh_token" not in data
+        assert claims["sub"] == "svc-x"
+        assert claims["principal_type"] == "service"
+        assert claims["scopes"] == ["metrics:read"]
+
+    def test_secret_errado_lanca_invalid_client(self) -> None:
+        auth = self._auth(self._service_settings())
+        with pytest.raises(InvalidClientError):
+            auth.issue_service_token("svc-x", "errado")
+
+    def test_cliente_desconhecido_lanca_invalid_client(self) -> None:
+        auth = self._auth(self._service_settings())
+        with pytest.raises(InvalidClientError):
+            auth.issue_service_token("nao-existe", "sek-x")
+
+    def test_sem_repository_lanca_invalid_client(self) -> None:
+        auth = self._auth(self._service_settings(), with_repo=False)
+        with pytest.raises(InvalidClientError):
+            auth.issue_service_token("svc-x", "sek-x")

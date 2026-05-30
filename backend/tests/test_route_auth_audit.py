@@ -29,6 +29,9 @@ PUBLIC_ROUTES: set[tuple[str, str]] = {
     ("/users/register", "POST"),
     ("/auth/login", "POST"),
     ("/auth/refresh", "POST"),
+    # client_credentials: a própria credencial do cliente é a autenticação
+    # (client_id/secret no body), não um Bearer token de usuário (US-28 p2).
+    ("/auth/token", "POST"),
 }
 
 
