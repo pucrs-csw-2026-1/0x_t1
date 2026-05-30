@@ -288,10 +288,16 @@ cp .env.example .env
 ```dotenv
 # .env.example
 APP_ENV=development
-SECRET_KEY=changeme
-ALGORITHM=HS256
+SECRET_KEY=changeme            # legado HS256; não mais usado (ver RS256 abaixo)
+ALGORITHM=RS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# RS256 (US-28) — par de chaves para assinar/validar os JWTs.
+# Em dev aponta para o par versionado em backend/keys/ (dev-only).
+RSA_PRIVATE_KEY_PATH=keys/dev_private.pem
+RSA_PUBLIC_KEY_PATH=keys/dev_public.pem
+JWT_KID=auth-dev-key
 
 AWS_REGION=us-east-1
 AWS_ENDPOINT_URL=http://localhost:4566   # Ministack (LocalStack-like)
@@ -308,10 +314,13 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     app_env: str = "development"
-    secret_key: str
-    algorithm: str = "HS256"
+    secret_key: str | None = None          # legado HS256 (não usado)
+    algorithm: str = "RS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
+    rsa_private_key_path: str = "keys/dev_private.pem"
+    rsa_public_key_path: str = "keys/dev_public.pem"
+    jwt_kid: str = "auth-dev-key"
     aws_region: str = "us-east-1"
     aws_endpoint_url: str | None = None
     aws_access_key_id: str | None = None
@@ -429,6 +438,14 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 - **Login** (`POST /auth/login`): recebe credenciais via `OAuth2PasswordRequestForm`, valida e retorna access + refresh tokens JWT.
 - **Rotas protegidas**: utilizam `Depends(get_current_user)`, que extrai e valida o token Bearer automaticamente.
 - **Escopos**: permissões granulares via `Security(get_current_user, scopes=["admin"])`.
+
+### Assinatura dos tokens — RS256 + JWKS (US-28)
+
+Os JWTs são assinados em **RS256** (assimétrico): o Auth assina com a **chave privada** e qualquer consumidor valida com a **chave pública**, publicada em `GET /.well-known/jwks.json`. Isso permite que outros microserviços (ex.: Metrics) validem os tokens **sem compartilhar segredo** — diferente do HS256 simétrico anterior, em que todo serviço precisaria da mesma chave para validar (e poderia forjar tokens).
+
+- O header de cada token traz um `kid`; o consumidor casa esse `kid` com a chave do JWKS.
+- Todo token carrega o claim `principal_type` (`user`) distinguindo identidade de pessoa de identidade de máquina (principal `service` via client_credentials virá em iteração futura).
+- **Chaves**: em dev, par RS256 versionado em [`backend/keys/`](backend/keys/) (dev-only). Em produção, monte chaves de um cofre de segredos (AWS Secrets Manager — US-23) via `RSA_PRIVATE_KEY_PATH`/`RSA_PUBLIC_KEY_PATH`; a chave privada de produção nunca é commitada.
 
 ### Ciclo de vida dos tokens (login → uso → refresh → logout)
 
@@ -563,6 +580,7 @@ Todas as rotas administrativas exigem **Bearer token com scope `admin`** no payl
 | Método | Rota | Descrição | Auth | Status |
 |---|---|---|---|---|
 | `GET` | `/health` | Healthcheck básico do serviço | Pública | 200 |
+| `GET` | `/.well-known/jwks.json` | Chave pública (JWKS) para validação dos JWTs RS256 por outros serviços | Pública | 200 |
 
 ### Exemplos de uso
 
@@ -1023,19 +1041,19 @@ Assim, o gate de `/admin/*` (que exige o scope `admin`) é satisfeito apenas por
 
 ### Troubleshooting — problemas comuns
 
-#### App não sobe: `secret_key Field required`
+#### App não sobe: `FileNotFoundError` em `keys/dev_private.pem`
 
-**Sintoma:** ao executar `uvicorn app.main:app --reload`, o app falha com `pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings — secret_key Field required`.
+**Sintoma:** ao executar `uvicorn app.main:app --reload`, o app (ou o primeiro request) falha porque não encontra o arquivo de chave RS256.
 
-**Causa:** o arquivo `backend/.env` não existe ou não tem `SECRET_KEY` definido.
+**Causa:** os caminhos `RSA_PRIVATE_KEY_PATH`/`RSA_PUBLIC_KEY_PATH` são resolvidos relativos ao **current working directory**. Rodando fora de `backend/`, `keys/dev_private.pem` não é encontrado.
 
-**Solução:** copie `.env.example` → `.env` em `backend/` e preencha `SECRET_KEY` com qualquer string aleatória. Em dev, qualquer valor serve (ex: `SECRET_KEY=dev-only-secret-not-for-prod`).
+**Solução:** rode a partir de `backend/` (onde está `keys/`), ou ajuste os paths no `.env`. Em dev, o par versionado em [`backend/keys/`](backend/keys/) já existe; não é preciso gerar nada.
 
-#### `pytest` falha com `secret_key Field required` em todos os testes
+#### `pytest` falha por não achar `.env` ou as chaves
 
-**Sintoma:** rodar `pytest backend/tests/` a partir da raiz do projeto resulta em 8 erros de coleta com o mesmo `secret_key Field required`.
+**Sintoma:** rodar `pytest backend/tests/` a partir da raiz resulta em erros de coleta (`.env` ou `keys/dev_*.pem` não encontrados).
 
-**Causa:** `pydantic-settings` procura `.env` relativo ao **current working directory**, não ao arquivo `settings.py`. Rodando na raiz, o `.env` é procurado em `./` — onde não existe.
+**Causa:** tanto `pydantic-settings` quanto os paths das chaves são relativos ao **current working directory**.
 
 **Solução:** entre em `backend/` antes de rodar:
 
