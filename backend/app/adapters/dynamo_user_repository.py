@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, cast
 import boto3
 from botocore.exceptions import ClientError
 
+from app.domain.access_level import Role
 from app.domain.user import Email, Gender, HashedPassword, User, Username
 from app.ports.user_repository import UserPage, UserRepository
 
@@ -78,7 +79,7 @@ class DynamoUserRepository(UserRepository):
             "hashed_password": user.hashed_password.value,
             "first_name": user.first_name,
             "last_name": user.last_name,
-            "access_level": user.access_level,
+            "access_level": user.access_level.value,
             "is_active": user.is_active,
             "created_at": user.created_at.isoformat(),
             "updated_at": user.updated_at.isoformat(),
@@ -110,7 +111,7 @@ class DynamoUserRepository(UserRepository):
             area=item.get("area"),
             gender=Gender(raw_gender) if raw_gender is not None else None,
             city=item.get("city"),
-            access_level=item.get("access_level", []),
+            access_level=item.get("access_level", Role.PARTICIPANT.value),
             is_active=bool(item.get("is_active", True)),
             created_at=datetime.fromisoformat(item["created_at"]),
             updated_at=datetime.fromisoformat(item["updated_at"]),

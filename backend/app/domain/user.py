@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 
+from app.domain.access_level import Role
 from app.domain.exceptions import (
     InvalidAgeError,
     InvalidEmailError,
@@ -178,7 +179,7 @@ class User:
     area: str | None = None
     gender: Gender | None = None
     city: str | None = None
-    access_level: list[str] = field(default_factory=list)
+    access_level: Role = Role.PARTICIPANT
     is_active: bool = True
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -194,6 +195,8 @@ class User:
         # Coerção defensiva: aceita string crua (ex.: leitura do repositório)
         if self.gender is not None and not isinstance(self.gender, Gender):
             self.gender = Gender(self.gender)
+        if not isinstance(self.access_level, Role):
+            self.access_level = Role(self.access_level)
 
     # --- Métodos de mutação ---
 
@@ -234,6 +237,11 @@ class User:
             self.gender = gender if isinstance(gender, Gender) else Gender(gender)
         if city is not None:
             self.city = validate_profile_text(city, "city")
+        self._touch()
+
+    def change_role(self, role: Role | str) -> None:
+        """Atribui o papel único do usuário (PARTICIPANT/MANAGER/ADMIN)."""
+        self.access_level = role if isinstance(role, Role) else Role(role)
         self._touch()
 
     def deactivate(self) -> None:

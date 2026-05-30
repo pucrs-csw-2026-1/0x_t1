@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from app.domain.access_level import ROLE_SCOPES, Role, scopes_for
 from app.domain.exceptions import (
     InvalidAgeError,
     InvalidEmailError,
@@ -276,8 +277,8 @@ class TestUserCreation:
     def test_gera_updated_at_automaticamente(self, valid_user: User) -> None:
         assert isinstance(valid_user.updated_at, datetime)
 
-    def test_access_level_padrao_e_lista_vazia(self, valid_user: User) -> None:
-        assert valid_user.access_level == []
+    def test_access_level_padrao_e_participant(self, valid_user: User) -> None:
+        assert valid_user.access_level is Role.PARTICIPANT
 
     def test_is_active_padrao_e_true(self, valid_user: User) -> None:
         assert valid_user.is_active is True
@@ -501,4 +502,73 @@ class TestUserDemographics:
     def test_change_demographics_atualiza_updated_at(self, valid_user: User) -> None:
         valid_user.updated_at = datetime(2000, 1, 1, tzinfo=timezone.utc)
         valid_user.change_demographics(age=33)
+        assert valid_user.updated_at > datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# US-27 — Papel (Role) e scopes cumulativos
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestRole:
+    """Enum de papel e derivação cumulativa de scopes."""
+
+    @pytest.mark.parametrize("valor", ["PARTICIPANT", "MANAGER", "ADMIN"])
+    def test_aceita_valores_validos(self, valor: str) -> None:
+        assert Role(valor).value == valor
+
+    def test_rejeita_valor_invalido(self) -> None:
+        with pytest.raises(ValueError):
+            Role("SUPERADMIN")
+
+    def test_scopes_participant_apenas_base(self) -> None:
+        assert scopes_for(Role.PARTICIPANT) == ["participant"]
+
+    def test_scopes_manager_cumulativo(self) -> None:
+        assert sorted(scopes_for(Role.MANAGER)) == ["manager", "participant"]
+
+    def test_scopes_admin_cumulativo_inclui_admin(self) -> None:
+        scopes = scopes_for(Role.ADMIN)
+        assert sorted(scopes) == ["admin", "manager", "participant"]
+        # gate de /admin/* compara 'admin' in scopes
+        assert "admin" in scopes
+
+    def test_hierarquia_e_cumulativa(self) -> None:
+        # cada papel superior contém os scopes do inferior
+        assert set(ROLE_SCOPES[Role.PARTICIPANT]) <= set(ROLE_SCOPES[Role.MANAGER])
+        assert set(ROLE_SCOPES[Role.MANAGER]) <= set(ROLE_SCOPES[Role.ADMIN])
+
+    def test_scopes_for_retorna_copia(self) -> None:
+        # mutar o retorno não deve afetar o mapa global
+        scopes = scopes_for(Role.ADMIN)
+        scopes.append("hacked")
+        assert "hacked" not in ROLE_SCOPES[Role.ADMIN]
+
+
+class TestUserRole:
+    """Papel na entidade User (US-27)."""
+
+    def test_default_e_participant(self, valid_user: User) -> None:
+        assert valid_user.access_level is Role.PARTICIPANT
+
+    def test_coage_string_para_role(self, valid_user_kwargs: dict[str, Any]) -> None:
+        # leitura do repositório entrega string crua
+        user = User(**valid_user_kwargs, access_level="ADMIN")
+        assert user.access_level is Role.ADMIN
+
+    def test_string_invalida_rejeita(self, valid_user_kwargs: dict[str, Any]) -> None:
+        with pytest.raises(ValueError):
+            User(**valid_user_kwargs, access_level="ROOT")
+
+    def test_change_role_altera_papel(self, valid_user: User) -> None:
+        valid_user.change_role(Role.MANAGER)
+        assert valid_user.access_level is Role.MANAGER
+
+    def test_change_role_aceita_string(self, valid_user: User) -> None:
+        valid_user.change_role("ADMIN")
+        assert valid_user.access_level is Role.ADMIN
+
+    def test_change_role_atualiza_updated_at(self, valid_user: User) -> None:
+        valid_user.updated_at = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        valid_user.change_role(Role.ADMIN)
         assert valid_user.updated_at > datetime(2000, 1, 1, tzinfo=timezone.utc)

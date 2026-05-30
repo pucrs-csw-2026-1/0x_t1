@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 
 from app.adapters.api.dependencies import get_current_user, get_user_service
 from app.application.user_service import UserService
+from app.domain.access_level import Role
 from app.domain.exceptions import (
-    AccessLevelNotFoundError,
     EmailAlreadyExistsError,
     InvalidAgeError,
     InvalidCredentialsError,
@@ -49,10 +49,10 @@ class UserResponse(BaseModel):
     city: str | None = Field(
         None, description="Cidade do usuário.", examples=["Porto Alegre"]
     )
-    access_level: list[str] = Field(
+    access_level: Role = Field(
         ...,
-        description="Níveis de acesso do usuário.",
-        examples=[["9e556479-7003-5916-9cd6-33f4227cec9b"]],
+        description="Papel único do usuário (PARTICIPANT, MANAGER ou ADMIN).",
+        examples=["PARTICIPANT"],
     )
     is_active: bool = Field(
         ..., description="Indica se o usuário está ativo.", examples=[True]
@@ -160,11 +160,6 @@ class UserCreate(BaseModel):
         max_length=128,
         description="Cidade do usuário.",
         examples=["Porto Alegre"],
-    )
-    access_level: list[str] | None = Field(
-        default=None,
-        deprecated=True,
-        description="Ignorado. Cadastro público sempre cria perfil 'user'.",
     )
 
 
@@ -329,7 +324,6 @@ def change_password(
         400: {"description": "Dados inválidos (email, senha, username ou nome)."},
         409: {"description": "Email já cadastrado."},
         422: {"description": "Campo demográfico inválido (age, area, gender, city)."},
-        500: {"description": "Catálogo de níveis de acesso não provisionado."},
     },
 )
 def register_user(
@@ -367,14 +361,6 @@ def register_user(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
-        ) from exc
-    except AccessLevelNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Catálogo de níveis de acesso não provisionado. "
-                "Verifique a infraestrutura (terraform apply)."
-            ),
         ) from exc
     return to_user_response(user)
 

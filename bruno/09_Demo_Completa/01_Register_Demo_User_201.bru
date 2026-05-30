@@ -16,7 +16,11 @@ body:json {
     "last_name": "{{demo_last_name}}",
     "username": "{{demo_username}}",
     "email": "{{demo_email}}",
-    "password": "{{demo_password}}"
+    "password": "{{demo_password}}",
+    "age": 27,
+    "area": "Saude",
+    "gender": "F",
+    "city": "Curitiba"
   }
 }
 
@@ -24,6 +28,10 @@ assert {
   res.status: eq 201
   res.body.email: eq {{demo_email}}
   res.body.is_active: eq true
+  res.body.access_level: eq PARTICIPANT
+  res.body.age: eq 27
+  res.body.gender: eq F
+  res.body.city: eq Curitiba
 }
 
 script:post-response {

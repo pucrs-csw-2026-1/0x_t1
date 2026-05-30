@@ -1,0 +1,31 @@
+meta {
+  name: 05 Register genero invalido (422)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Genero",
+    "last_name": "Invalido",
+    "username": "genero.invalido",
+    "email": "genero.invalido@example.com",
+    "password": "Senha@123",
+    "gender": "MASCULINO"
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  US-26: gender e um enum (F | M | OUTRO | NAO_INFORMADO). Valor fora do
+  enum e rejeitado pela validacao do Pydantic com 422.
+}

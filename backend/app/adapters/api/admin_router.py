@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field
 from app.adapters.api.dependencies import get_current_user, get_user_service
 from app.adapters.api.user_router import UserResponse, to_user_response
 from app.application.user_service import UserService
+from app.domain.access_level import Role
 from app.domain.exceptions import (
-    AccessLevelNotFoundError,
     InvalidPaginationError,
     UserNotFoundError,
 )
@@ -27,18 +27,13 @@ class UserListResponse(BaseModel):
 
 
 class AdminUserUpdate(BaseModel):
-    access_level: list[str] | None = Field(
+    access_level: Role | None = Field(
         None,
         description=(
-            "UUIDs do catálogo de access_level. Quando informado, "
-            "substitui o conjunto atual do usuário."
+            "Novo papel do usuário (PARTICIPANT, MANAGER ou ADMIN). "
+            "Quando informado, substitui o papel atual."
         ),
-        examples=[
-            [
-                "9e556479-7003-5916-9cd6-33f4227cec9b",
-                "bace0701-15e3-5144-97c5-47487d543032",
-            ]
-        ],
+        examples=["MANAGER"],
     )
     is_active: bool | None = Field(
         None,
@@ -126,9 +121,9 @@ def admin_get_user(
         401: {"description": "Token ausente, inválido ou expirado."},
         403: {"description": "Permissão insuficiente."},
         404: {"description": "Usuário não encontrado."},
-        422: {"description": "UUID de access_level inválido."},
+        422: {"description": "Papel (access_level) inválido."},
     },
-    description="Atualiza access_level e/ou is_active de um usuário (somente admin).",
+    description="Atualiza o papel e/ou is_active de um usuário (somente admin).",
 )
 def admin_update_user(
     user_id: str,
@@ -150,10 +145,6 @@ def admin_update_user(
     except UserNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
-        ) from exc
-    except AccessLevelNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
     return to_user_response(user)
 

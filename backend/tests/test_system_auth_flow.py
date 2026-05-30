@@ -26,7 +26,6 @@ from moto import mock_aws
 from app.adapters.api import dependencies as deps_module
 from app.adapters.api.auth_router import router as auth_router
 from app.adapters.api.user_router import router as user_router
-from tests.conftest import ADMIN_UUID, USER_UUID
 
 VALID_PAYLOAD = {
     "first_name": "Maria",
@@ -38,8 +37,8 @@ VALID_PAYLOAD = {
 
 
 def _create_tables() -> None:
-    """Cria 'user' e 'access_level' (seedada) no DynamoDB mockado, espelhando
-    o schema/seed do Terraform."""
+    """Cria a tabela 'user' no DynamoDB mockado, espelhando o schema do
+    Terraform. O papel é um enum no código — não há mais tabela de catálogo."""
     ddb = boto3.resource("dynamodb", region_name="us-east-1")
 
     ddb.create_table(
@@ -64,15 +63,6 @@ def _create_tables() -> None:
         ],
         BillingMode="PAY_PER_REQUEST",
     )
-
-    access_table = ddb.create_table(
-        TableName="access_level",
-        KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
-        AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
-        BillingMode="PAY_PER_REQUEST",
-    )
-    access_table.put_item(Item={"id": ADMIN_UUID, "title": "admin"})
-    access_table.put_item(Item={"id": USER_UUID, "title": "user"})
 
 
 @pytest.fixture
@@ -271,21 +261,22 @@ class TestProtectedEndpointsAuth:
 
     def test_refresh_preserva_scopes_apos_login(self, client: TestClient) -> None:
         """CT-SYS-12: scopes do user devem sobreviver ao /auth/refresh
-        (regressão direta do PR #58 — antes saíam vazios). Com a US-13
-        a promoção é feita direto no banco, já que o register público
-        ignora access_level do payload (segurança contra auto-promoção)."""
+        (regressão direta do PR #58 — antes saíam vazios). Com a US-27 o
+        papel é um enum único e os scopes são cumulativos; a promoção é
+        feita direto no banco, já que o register público sempre cria
+        PARTICIPANT (segurança contra auto-promoção)."""
         register_resp = _register(client)
         assert register_resp["status"] == 201
         body = register_resp["body"]
         assert isinstance(body, dict)
         user_id = body["id"]
 
-        # Promove o usuário no banco para [user, admin] — simula uma
-        # operação administrativa (US-18 cobrirá esse fluxo).
+        # Promove o usuário no banco para ADMIN — simula uma operação
+        # administrativa (PATCH /admin/users/{id} cobre esse fluxo).
         boto3.resource("dynamodb", region_name="us-east-1").Table("user").update_item(
             Key={"id": user_id},
             UpdateExpression="SET access_level = :a",
-            ExpressionAttributeValues={":a": [USER_UUID, ADMIN_UUID]},
+            ExpressionAttributeValues={":a": "ADMIN"},
         )
 
         login = _login(client)
@@ -299,9 +290,10 @@ class TestProtectedEndpointsAuth:
         assert r_refresh.status_code == 200
 
         # Decodifica o novo access_token sem verificar assinatura — o
-        # objetivo aqui é só ler o claim 'scopes' do payload.
+        # objetivo aqui é só ler o claim 'scopes' do payload. ADMIN é
+        # cumulativo: inclui manager e participant.
         from jose import jwt
 
         new_access = r_refresh.json()["access_token"]
         payload = jwt.get_unverified_claims(new_access)
-        assert sorted(payload["scopes"]) == ["admin", "user"]
+        assert sorted(payload["scopes"]) == ["admin", "manager", "participant"]

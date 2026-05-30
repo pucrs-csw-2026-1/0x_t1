@@ -18,12 +18,19 @@ assert {
   res.status: eq 200
   res.body.id: eq {{demo_user_id}}
   res.body.email: eq {{demo_email}}
+  res.body.access_level: eq PARTICIPANT
+  res.body.age: eq 27
+  res.body.city: eq Curitiba
 }
 
 tests {
   test("senha nunca eh exposta", function() {
     expect(res.body).to.not.have.property("password");
     expect(res.body).to.not.have.property("hashed_password");
+  });
+  test("US-26: demografia do cadastro persiste e aparece no perfil", function() {
+    expect(res.body.age).to.equal(27);
+    expect(res.body.gender).to.equal("F");
   });
 }
 

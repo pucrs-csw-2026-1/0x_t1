@@ -20,8 +20,8 @@ assert {
 }
 
 tests {
-  test("admin tem 2 access levels (user + admin)", function() {
-    expect(res.body.access_level).to.be.an("array").with.lengthOf(2);
+  test("admin tem papel ADMIN", function() {
+    expect(res.body.access_level).to.equal("ADMIN");
   });
 }
 

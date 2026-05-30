@@ -111,13 +111,6 @@ class UserNotFoundError(DomainError):
         super().__init__(f"Usuário não encontrado: {user_id}")
 
 
-class AccessLevelNotFoundError(DomainError):
-    """Exceção para nível de acesso não encontrado."""
-
-    def __init__(self, title: str) -> None:
-        super().__init__(f"Nível de acesso não encontrado: {title}")
-
-
 class InvalidPaginationError(DomainError):
     """Exceção para parâmetros de paginação inválidos."""
 

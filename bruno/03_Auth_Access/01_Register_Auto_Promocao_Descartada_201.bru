@@ -17,28 +17,25 @@ body:json {
     "username": "auto.promotor",
     "email": "auto.promotor@example.com",
     "password": "Senha@123",
-    "access_level": ["{{admin_uuid}}"]
+    "access_level": "ADMIN"
   }
 }
 
 assert {
   res.status: eq 201
   res.body.email: eq auto.promotor@example.com
-  res.body.access_level: length 1
+  res.body.access_level: eq PARTICIPANT
 }
 
 tests {
-  test("US-13: tentativa de auto-promocao a admin eh silenciosamente descartada", function() {
-    const ADMIN_UUID = bru.getEnvVar("admin_uuid");
-    const USER_UUID = bru.getEnvVar("user_uuid");
-    expect(res.body.access_level).to.not.include(ADMIN_UUID);
-    expect(res.body.access_level).to.include(USER_UUID);
+  test("US-27: tentativa de auto-promocao a admin eh silenciosamente descartada", function() {
+    expect(res.body.access_level).to.equal("PARTICIPANT");
   });
 }
 
 docs {
-  Critério US-13: o cadastro público nunca concede perfis elevados.
-  Mesmo enviando `access_level: ["<UUID-admin>"]` no body, o resultado
-  deve ser um usuário com access_level = [<UUID-user>] — descarte
+  Critério US-27: o cadastro público nunca concede papel elevado.
+  Mesmo enviando `access_level: "ADMIN"` no body, o campo nem existe em
+  UserCreate (e ignorado) e o usuário sai como PARTICIPANT — descarte
   silencioso (sem 422).
 }

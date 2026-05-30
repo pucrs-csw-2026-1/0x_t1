@@ -25,22 +25,22 @@ tests {
 }
 
 docs {
-  Pré-requisito MANUAL: a US-13 não permite criar admin pela API
-  pública (por design). Antes de rodar este teste:
+  Pré-requisito MANUAL: o cadastro público não cria admin (por design).
+  Antes de rodar este teste:
 
   1. Registrar um user normal (pode usar `01_Happy_Path/01_Register.bru`).
-  2. Promover o user no DynamoDB Local. Exemplo:
+  2. Promover o user no DynamoDB Local (papel agora é string enum). Exemplo:
 
      aws --endpoint-url=http://localhost:4566 dynamodb update-item \
        --table-name user \
        --key '{"id":{"S":"<USER_ID>"}}' \
        --update-expression "SET access_level = :a" \
-       --expression-attribute-values '{":a":{"L":[{"S":"<USER_UUID>"},{"S":"<ADMIN_UUID>"}]}}'
+       --expression-attribute-values '{":a":{"S":"ADMIN"}}'
 
-  3. Fazer login com esse user (JWT antigo continua user — tem que
+  3. Fazer login com esse user (JWT antigo continua participant — tem que
      ser um login NOVO pós-promoção).
   4. Setar a var de ambiente `admin_access_token` no Bruno com o
      novo access_token (Local.bru → vars:secret).
 
-  Quando a US-18 estiver implementada, o passo 2 vira um PATCH HTTP.
+  Alternativa: usar o PATCH HTTP da US-18 (08_Admin_User_Management/05).
 }
