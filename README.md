@@ -53,7 +53,7 @@ Estão **fora do escopo** desta implementação:
 
 - **MFA / 2FA** — apenas senha + email.
 - **OAuth social** (login com Google, GitHub etc.) — apenas OAuth2 Password Bearer interno.
-- **Gestão de organizações, times ou papéis hierárquicos** — o modelo de autorização é flat: `access_level` é uma lista de UUIDs do catálogo, não uma árvore de permissões.
+- **Gestão de organizações, times ou permissões compostas** — o modelo de autorização usa um papel único por usuário (`access_level`: enum `PARTICIPANT`/`MANAGER`/`ADMIN`, cumulativo), não uma árvore de permissões ortogonais.
 - **Recuperação de senha por email** — não há fluxo de "esqueci minha senha"; a troca exige sempre a senha atual.
 - **Rate limiting, auditoria detalhada e observabilidade** — responsabilidade da camada de infraestrutura.
 - **Deploy em produção** — todo o setup atual visa desenvolvimento local com Terraform + LocalStack. O pipeline de CD está documentado mas o step de deploy AWS ainda está pendente.
@@ -79,7 +79,7 @@ Cada feature abaixo cita a User Story (US) que a implementou.
 |---|---|---|
 | Proteção de rotas por Bearer token | US-11 | `Depends(get_current_user)` em todas as rotas privadas |
 | Controle de acesso por perfil (scopes no JWT) | US-12 | `Security(get_current_user, scopes=["admin"])` em rotas privilegiadas; 403 quando o token não tem o scope exigido |
-| Catálogo de níveis de acesso e scope gate `admin` | US-13 | Tabela `access_level` com UUIDs determinísticos; tentativa de auto-promoção no cadastro é silenciosamente descartada |
+| Papel único por usuário e scope gate `admin` | US-13, US-27 | `access_level` é um enum (`PARTICIPANT`/`MANAGER`/`ADMIN`) com scopes cumulativos; tentativa de auto-promoção no cadastro é silenciosamente descartada |
 
 ### Self-Service do Perfil
 
@@ -186,12 +186,11 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 │   │   │
 │   │   ├── domain/                          # Camada de Domínio (sem deps externas)
 │   │   │   ├── user.py                      # Entidade User + value objects (Email, Username, HashedPassword)
-│   │   │   ├── access_level.py              # Entidade AccessLevel (catálogo de perfis)
+│   │   │   ├── access_level.py              # Enum Role + mapa cumulativo de scopes
 │   │   │   └── exceptions.py                # Exceções de domínio
 │   │   │
 │   │   ├── ports/                           # Portas de saída (interfaces ABC)
 │   │   │   ├── user_repository.py           # Interface: UserRepository
-│   │   │   ├── access_level_repository.py   # Interface: AccessLevelRepository
 │   │   │   ├── token_provider.py            # Interface: TokenProvider
 │   │   │   ├── password_hasher.py           # Interface: PasswordHasher
 │   │   │   └── refresh_token_repository.py  # Interface: RefreshTokenRepository
@@ -209,7 +208,6 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 │   │       ├── config/
 │   │       │   └── settings.py              # Settings via pydantic-settings (BaseSettings)
 │   │       ├── dynamo_user_repository.py    # UserRepository -> DynamoDB (boto3)
-│   │       ├── dynamo_access_level_repository.py  # AccessLevelRepository -> DynamoDB
 │   │       ├── in_memory_refresh_token_repository.py  # RefreshTokenRepository in-memory (dev)
 │   │       ├── jwt_token_provider.py        # TokenProvider -> python-jose
 │   │       └── bcrypt_password_hasher.py    # PasswordHasher -> passlib/bcrypt
@@ -366,7 +364,7 @@ docker build -t auth-service:dev -f backend/Dockerfile backend/
 ```bash
 docker run --rm -it \
   --name auth-service \
-  -p 8000:8000 \
+  -p 8080:8080 \
   --env-file backend/.env \
   -e AWS_ENDPOINT_URL=http://host.docker.internal:4566 \
   --add-host=host.docker.internal:host-gateway \
@@ -376,7 +374,7 @@ docker run --rm -it \
 Decodificando as flags:
 
 - `--name auth-service` — nome fixo do container (permite `docker logs auth-service`, `docker stop auth-service`, etc.).
-- `-p 8000:8000` — mapeia a porta 8000 do container para a porta 8000 do host.
+- `-p 8080:8080` — mapeia a porta 8080 do container para a porta 8080 do host.
 - `--env-file backend/.env` — passa todas as variáveis do `.env` para o container (`SECRET_KEY`, `APP_ENV`, etc.).
 - `-e AWS_ENDPOINT_URL=...` — **sobrescreve** o endpoint do LocalStack: dentro do container, `localhost` aponta para o próprio container, então é necessário usar `host.docker.internal` para acessar o LocalStack que está no host.
 - `--add-host=host.docker.internal:host-gateway` — necessário em Linux (no Docker Desktop em Windows/macOS é automático).
@@ -394,8 +392,8 @@ docker stop auth-service                 # parar (Ctrl+C também funciona com -i
 
 Em qualquer um dos modos, a documentação interativa estará disponível em:
 
-- Swagger UI: <http://localhost:8000/docs>
-- ReDoc: <http://localhost:8000/redoc>
+- Swagger UI: <http://localhost:8080/docs>
+- ReDoc: <http://localhost:8080/redoc>
 
 ---
 
@@ -410,12 +408,11 @@ O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. A modelagem fo
 | Tabela | Partition Key | Descrição |
 |---|---|---|
 | `user` | `id` (UUID) | Armazena usuários cadastrados no sistema |
-| `access_level` | `id` (UUID) | Define os níveis de acesso disponíveis no sistema |
 
 ### Decisões de Modelagem
 
-- O atributo `access_level` em `user` armazena uma lista de UUIDs referenciando a tabela `access_level` (FK lógica, já que o DynamoDB não suporta chaves estrangeiras nativas).
-- Palavras reservadas do DynamoDB (como `name`) foram substituídas por alternativas semânticas equivalentes (`title`) para evitar conflitos em expressões de consulta.
+- O atributo `access_level` em `user` é um **papel único** (string enum `PARTICIPANT`/`MANAGER`/`ADMIN`), gravado no próprio registro. A partir da US-27 não há mais tabela de catálogo nem FK lógica — o papel é um tipo no código e os scopes do JWT são derivados dele de forma cumulativa.
+- Palavras reservadas do DynamoDB (como `name`) foram substituídas por alternativas semânticas equivalentes para evitar conflitos em expressões de consulta.
 
 ---
 
@@ -529,7 +526,7 @@ flowchart TD
 
 ## Referência de Endpoints
 
-A **documentação interativa completa** (com schemas Pydantic, exemplos auto-gerados, descrição de cada campo e funcionalidade de "Try it out") está disponível no **Swagger UI** em `http://localhost:8000/docs` quando o app está rodando. As tabelas abaixo são um resumo rastreável para consulta rápida, listando todos os 13 endpoints expostos.
+A **documentação interativa completa** (com schemas Pydantic, exemplos auto-gerados, descrição de cada campo e funcionalidade de "Try it out") está disponível no **Swagger UI** em `http://localhost:8080/docs` quando o app está rodando. As tabelas abaixo são um resumo rastreável para consulta rápida, listando todos os 13 endpoints expostos.
 
 ### Autenticação (`/auth/*`)
 
@@ -543,7 +540,7 @@ A **documentação interativa completa** (com schemas Pydantic, exemplos auto-ge
 
 | Método | Rota | Descrição | Auth | Status esperados |
 |---|---|---|---|---|
-| `POST` | `/users/register` | Cadastra um novo usuário (perfil criado sempre como `user`) | Pública | 201, 400, 409, 500 |
+| `POST` | `/users/register` | Cadastra um novo usuário (papel criado sempre como `PARTICIPANT`) | Pública | 201, 400, 409, 422 |
 | `GET` | `/users/me` | Retorna os dados do usuário autenticado | Bearer | 200, 401, 404 |
 | `PATCH` | `/users/me` | Atualiza parcialmente o perfil próprio | Bearer | 200, 401, 404, 409, 422 |
 | `PUT` | `/users/me/password` | Troca a senha (exige a senha atual + valida força da nova) | Bearer | 204, 400, 401, 422 |
@@ -558,7 +555,7 @@ Todas as rotas administrativas exigem **Bearer token com scope `admin`** no payl
 | `GET` | `/admin/ping` | Healthcheck do gate de admin (demonstração da US-13) | 200, 401, 403 |
 | `GET` | `/admin/users` | Lista paginada de usuários (query params: `limit`, `cursor`) | 200, 400, 401, 403 |
 | `GET` | `/admin/users/{user_id}` | Retorna dados de um usuário pelo ID | 200, 401, 403, 404 |
-| `PATCH` | `/admin/users/{user_id}` | Atualiza `access_level` e/ou `is_active` de outro usuário | 200, 400, 401, 403, 404, 422 |
+| `PATCH` | `/admin/users/{user_id}` | Atualiza o papel (`access_level`) e/ou `is_active` de outro usuário | 200, 400, 401, 403, 404, 422 |
 | `DELETE` | `/admin/users/{user_id}` | Desativa um usuário (admin **não** pode desativar a si mesmo → 400) | 204, 400, 401, 403, 404 |
 
 ### Outros
@@ -569,13 +566,13 @@ Todas as rotas administrativas exigem **Bearer token com scope `admin`** no payl
 
 ### Exemplos de uso
 
-Recomenda-se testar os endpoints interativamente pelo **Swagger UI** em `http://localhost:8000/docs`, que renderiza formulários e schemas auto-gerados a partir dos modelos Pydantic.
+Recomenda-se testar os endpoints interativamente pelo **Swagger UI** em `http://localhost:8080/docs`, que renderiza formulários e schemas auto-gerados a partir dos modelos Pydantic.
 
 Convenções para usar o Swagger:
 
 - **Endpoints protegidos** (marcados como `Bearer` na tabela): clique no botão **Authorize** 🔒 no topo da página antes de chamar. Você pode preencher email + senha no formulário OAuth2 (o Swagger faz o login implícito e captura o token automaticamente) ou colar um JWT diretamente no campo `Value` do esquema HTTPBearer.
 - **Endpoints administrativos** (`/admin/*`): o JWT autorizado precisa carregar `"admin"` no array `scopes` do payload. Para obter um JWT admin localmente, faça login com o admin root criado pelo seed do lifespan (credenciais default: `admin@local.dev` / `Admin@123`).
-- **UUIDs do catálogo** são determinísticos (`uuidv5` com namespace fixo): `user` é sempre `9e556479-7003-5916-9cd6-33f4227cec9b` e `admin` é sempre `bace0701-15e3-5144-97c5-47487d543032`.
+- **Papéis** são um enum no código (`PARTICIPANT`/`MANAGER`/`ADMIN`) — não há mais UUIDs de catálogo. O `PATCH /admin/users/{id}` recebe o papel como string (ex.: `{"access_level": "ADMIN"}`).
 
 Os exemplos abaixo mostram os corpos de request/response que o Swagger usa internamente, com notas sobre o passo a passo na UI.
 
@@ -660,13 +657,13 @@ Endpoint público. **Try it out** → preencha os campos no formulário JSON →
   "last_name": "Silva",
   "username": "maria.silva",
   "email": "maria@example.com",
-  "access_level": ["9e556479-7003-5916-9cd6-33f4227cec9b"],
+  "access_level": "PARTICIPANT",
   "is_active": true,
   "created_at": "2026-04-11T10:30:00Z"
 }
 ```
 
-> Se o cliente enviar `access_level` no body, o campo é **silenciosamente ignorado** (US-13): cadastro público sempre cria perfil `user`. Promoção a `admin` é exclusiva via `PATCH /admin/users/{id}` (US-18).
+> Se o cliente enviar `access_level` no body, o campo é **silenciosamente ignorado** (US-27): o campo nem existe em `UserCreate` e o cadastro público sempre cria papel `PARTICIPANT`. Promoção a `MANAGER`/`ADMIN` é exclusiva via `PATCH /admin/users/{id}` (US-18).
 
 ##### `GET /users/me`
 
@@ -680,7 +677,7 @@ Endpoint protegido. Após **Authorize** 🔒 no topo da página, expanda o endpo
   "last_name": "Silva",
   "username": "maria.silva",
   "email": "maria@example.com",
-  "access_level": ["9e556479-7003-5916-9cd6-33f4227cec9b"],
+  "access_level": "PARTICIPANT",
   "is_active": true,
   "created_at": "2026-04-11T10:30:00Z"
 }
@@ -706,7 +703,7 @@ Endpoint protegido. Após **Authorize**, **Try it out** → informe no body apen
   "last_name": "Silva",
   "username": "maria.silva",
   "email": "maria.eduarda@example.com",
-  "access_level": ["9e556479-7003-5916-9cd6-33f4227cec9b"],
+  "access_level": "PARTICIPANT",
   "is_active": true,
   "created_at": "2026-04-11T10:30:00Z"
 }
@@ -776,7 +773,7 @@ Após **Authorize** com JWT admin, **Try it out** → **Execute**.
       "last_name": "Silva",
       "username": "maria.silva",
       "email": "maria@example.com",
-      "access_level": ["9e556479-7003-5916-9cd6-33f4227cec9b"],
+      "access_level": "PARTICIPANT",
       "is_active": true,
       "created_at": "2026-04-11T10:30:00Z"
     }
@@ -799,7 +796,7 @@ Após **Authorize** com JWT admin, **Try it out** → **Execute**.
   "last_name": "Silva",
   "username": "maria.silva",
   "email": "maria@example.com",
-  "access_level": ["9e556479-7003-5916-9cd6-33f4227cec9b"],
+  "access_level": "PARTICIPANT",
   "is_active": true,
   "created_at": "2026-04-11T10:30:00Z"
 }
@@ -812,19 +809,13 @@ Após **Authorize** com JWT admin, **Try it out** → **Execute**.
 ```json
 // Request body — exemplo de promoção a admin
 {
-  "access_level": [
-    "9e556479-7003-5916-9cd6-33f4227cec9b",
-    "bace0701-15e3-5144-97c5-47487d543032"
-  ]
+  "access_level": "ADMIN"
 }
 
 // Response 200
 {
   "id": "acde070d-8c4c-4f0d-9d8a-162843c10333",
-  "access_level": [
-    "9e556479-7003-5916-9cd6-33f4227cec9b",
-    "bace0701-15e3-5144-97c5-47487d543032"
-  ],
+  "access_level": "ADMIN",
   "is_active": true,
   "first_name": "Maria",
   "last_name": "Silva",
@@ -904,7 +895,7 @@ O backlog do projeto, mantido nas [Issues do GitHub](https://github.com/pucrs-cs
 | **Persistência** | Armazenamento seguro dos dados de usuários e das senhas | `app/ports/user_repository.py` + `app/adapters/dynamo_user_repository.py` + `app/adapters/bcrypt_password_hasher.py` | US-03 (UserRepository + DynamoDB) · US-04 (bcrypt) |
 | **Autenticação** | Fluxo OAuth2 completo (emissão e gerenciamento de tokens) | `app/adapters/jwt_token_provider.py` + `app/application/auth_service.py` + `app/adapters/api/auth_router.py` | US-05 (JWT) · US-06 (login) · US-07 (refresh) · US-08 (logout) |
 | **Usuários** | Endpoints de criação de conta e manipulação do próprio perfil | `app/application/user_service.py` + `app/adapters/api/user_router.py` (rotas `/users/*`) | US-09 (cadastro) · US-10 (consulta) · US-15 (atualização) · US-16 (senha) · US-17 (desativação) |
-| **Autorização** | Proteção de rotas por autenticação e restrição por perfil | `app/adapters/api/dependencies.py` (`get_current_user`, `Security` scopes) + `app/adapters/api/admin_router.py` (rotas `/admin/*`) | US-11 (Bearer gate) · US-12 (scope per profile) · US-13 (catálogo + descarte de auto-promoção) · US-14 (listing) · US-18 (admin CRUD) |
+| **Autorização** | Proteção de rotas por autenticação e restrição por perfil | `app/adapters/api/dependencies.py` (`get_current_user`, `Security` scopes) + `app/adapters/api/admin_router.py` (rotas `/admin/*`) | US-11 (Bearer gate) · US-12 (scope per profile) · US-13/US-27 (papel enum + scopes cumulativos + descarte de auto-promoção) · US-14 (listing) · US-18 (admin CRUD) |
 
 **Critério arquitetural por trás da divisão:** cada épico corresponde a uma camada ou *concern* isolável da arquitetura hexagonal, o que permite que uma feature branch (`feat/us-XX`) tenha escopo bem delimitado dentro de uma única camada. Isso reduz conflito de merge entre PRs paralelas (uma equipe pode trabalhar em Persistência enquanto outra mexe em Autenticação sem se tocarem) e simplifica revisão (o reviewer sabe a priori que tipo de mudança esperar).
 
@@ -989,13 +980,13 @@ Roda em todo push para `main` (ou seja, após cada release ou hotfix). Faz `git 
 
 #### Como obtenho um token admin localmente para testar endpoints administrativos?
 
-O serviço cria automaticamente um **admin root** durante o startup do app quando `app_env=development` (default em `.env`). Credenciais: `admin@local.dev` / `Admin@123`. Faça login normal via `POST /auth/login` (ou pelo botão **Authorize** do Swagger) com essas credenciais — o JWT retornado terá `scopes=["user", "admin"]`.
+O serviço cria automaticamente um **admin root** durante o startup do app quando `app_env=development` (default em `.env`). Credenciais: `admin@local.dev` / `Admin@123`. Faça login normal via `POST /auth/login` (ou pelo botão **Authorize** do Swagger) com essas credenciais — o JWT retornado terá os scopes cumulativos de ADMIN: `scopes=["participant", "manager", "admin"]`.
 
-Para promover **outro** usuário a admin (caso queira testar com identidade diferente do seed), use `PATCH /admin/users/{user_id}` informando `access_level` com os 2 UUIDs do catálogo. Detalhe importante: o usuário promovido precisa fazer **login novo** — JWTs antigos não recebem o scope retroativamente.
+Para promover **outro** usuário a admin (caso queira testar com identidade diferente do seed), use `PATCH /admin/users/{user_id}` informando `{"access_level": "ADMIN"}`. Detalhe importante: o usuário promovido precisa fazer **login novo** — JWTs antigos não recebem o scope retroativamente.
 
-#### Tentei me cadastrar com `access_level: ["<UUID-admin>"]` no body. Por que voltei como `user`?
+#### Tentei me cadastrar com `access_level: "ADMIN"` no body. Por que voltei como `PARTICIPANT`?
 
-É proteção deliberada (US-13). Cadastro público sempre cria perfil `user`, ignorando silenciosamente qualquer `access_level` enviado pelo cliente. Promoção a admin é privilégio exclusivo de quem já é admin, via `PATCH /admin/users/{user_id}`. Veja [Segurança — OAuth2 + JWT](#segurança--oauth2--jwt) para o racional.
+É proteção deliberada (US-27). O campo `access_level` nem existe em `UserCreate`, então é silenciosamente ignorado; o cadastro público sempre cria papel `PARTICIPANT`. Promoção a `MANAGER`/`ADMIN` é privilégio exclusivo de quem já é admin, via `PATCH /admin/users/{user_id}`. Veja [Segurança — OAuth2 + JWT](#segurança--oauth2--jwt) para o racional.
 
 #### Tentei trocar minha senha para `Pass1234` mas recebi 422. Qual é a regra de força?
 
@@ -1003,7 +994,7 @@ Mínimo 8 caracteres, com pelo menos: 1 maiúscula, 1 minúscula, 1 dígito **e 
 
 #### Promovi um usuário a admin mas o JWT dele continua sem o scope "admin". Bug?
 
-Não é bug — é design intencional. O JWT é **imutável após emissão**. Ao alterar `access_level` no banco, isso só afeta **logins futuros**. O usuário precisa autenticar novamente (`POST /auth/login`) para receber um JWT atualizado com `scopes=["user","admin"]`. Tokens antigos continuam com o scope anterior até expirarem (default 30 min para access, 7 dias para refresh).
+Não é bug — é design intencional. O JWT é **imutável após emissão**. Ao alterar `access_level` no banco, isso só afeta **logins futuros**. O usuário precisa autenticar novamente (`POST /auth/login`) para receber um JWT atualizado com os scopes cumulativos do novo papel (ex.: ADMIN → `scopes=["participant","manager","admin"]`). Tokens antigos continuam com o scope anterior até expirarem (default 30 min para access, 7 dias para refresh).
 
 #### Desativei minha conta (`DELETE /users/me`). Meu refresh token continua funcionando?
 
@@ -1018,14 +1009,17 @@ Não. Tanto `POST /auth/login` quanto `POST /auth/refresh` rejeitam tentativas d
 
 A API **não expõe** um endpoint público de "verificar email" — defesa contra enumeração de contas. O cliente deve esperar o 409 do `POST /users/register` e tratar como "conta já existe". Apenas admins podem listar usuários via `GET /admin/users`.
 
-#### Onde estão os UUIDs dos níveis de acesso (`user` / `admin`)?
+#### Quais são os papéis (`access_level`) e como viram scopes?
 
-São **determinísticos**, gerados via `uuidv5(NAMESPACE_DNS, "user"|"admin")`:
+O papel é um enum no código (`Role` em [`backend/app/domain/access_level.py`](backend/app/domain/access_level.py)): `PARTICIPANT`, `MANAGER` ou `ADMIN`. Não há mais UUIDs nem tabela de catálogo (removidos na US-27).
 
-- `user`: `9e556479-7003-5916-9cd6-33f4227cec9b`
-- `admin`: `bace0701-15e3-5144-97c5-47487d543032`
+Os scopes do JWT são derivados do papel de forma **cumulativa**:
 
-Definidos no seed do Terraform ([`terraform/dynamodb.tf`](terraform/dynamodb.tf)) e usados como referência cruzada em tabelas, exemplos e testes.
+- `PARTICIPANT` → `["participant"]`
+- `MANAGER` → `["participant", "manager"]`
+- `ADMIN` → `["participant", "manager", "admin"]`
+
+Assim, o gate de `/admin/*` (que exige o scope `admin`) é satisfeito apenas por ADMIN.
 
 ### Troubleshooting — problemas comuns
 
@@ -1057,12 +1051,12 @@ cd backend; pytest tests/
 [lifespan] falhou ao seedar admin: ...
 ```
 
-**Causa:** o catálogo `access_level` está vazio. A função `_seed_root_admin` em `app/main.py` aborta silenciosamente quando não encontra os títulos `user` e `admin` no catálogo, e o erro aparece como warning.
+**Causa:** o DynamoDB não estava acessível no startup (Ministack fora do ar ou tabela `user` ausente). A função `_seed_root_admin` em `app/main.py` registra o admin root e define seu papel como `ADMIN` — se a tabela `user` não existir, a operação falha e o erro aparece como warning (não derruba o startup).
 
-**Solução:** rodar Terraform:
+**Solução:** garanta o Ministack de pé e a tabela provisionada:
 
 ```bash
-cd terraform && terraform apply -auto-approve
+cd terraform && docker compose up -d && terraform apply -auto-approve
 ```
 
 E reiniciar o app. O `--reload` do uvicorn detecta o arquivo mas pode não disparar o lifespan novamente — `Ctrl+C` e re-execução são mais seguros.
