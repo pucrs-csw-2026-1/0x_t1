@@ -34,6 +34,20 @@ class InvalidNameError(DomainError):
         super().__init__(f"Nome inválido: {reason}")
 
 
+class InvalidAgeError(DomainError):
+    """Exceção para idade inválida (fora do intervalo 0–150)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Idade inválida: {reason}")
+
+
+class InvalidProfileFieldError(DomainError):
+    """Exceção para campo demográfico de texto inválido (area, city)."""
+
+    def __init__(self, field_name: str, reason: str) -> None:
+        super().__init__(f"Campo '{field_name}' inválido: {reason}")
+
+
 class EmailAlreadyExistsError(DomainError):
     """Exceção para email já existente."""
 

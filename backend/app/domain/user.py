@@ -4,10 +4,13 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from enum import Enum
 
 from app.domain.exceptions import (
+    InvalidAgeError,
     InvalidEmailError,
     InvalidNameError,
+    InvalidProfileFieldError,
     InvalidUsernameError,
     WeakPasswordError,
 )
@@ -16,6 +19,19 @@ from app.domain.exceptions import (
 
 _EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 _USERNAME_REGEX = re.compile(r"^[a-zA-Z0-9_.]{8,25}$")
+
+_MIN_AGE = 0
+_MAX_AGE = 150
+_MAX_PROFILE_TEXT = 128
+
+
+class Gender(str, Enum):
+    """Gênero declarado pelo usuário. `str` na base para serializar pelo valor."""
+
+    F = "F"
+    M = "M"
+    OUTRO = "OUTRO"
+    NAO_INFORMADO = "NAO_INFORMADO"
 
 
 class Email:
@@ -117,6 +133,32 @@ def validate_name_field(value: str, field_name: str) -> str:
     return stripped
 
 
+def validate_age(value: int | None) -> int | None:
+    """Valida idade demográfica opcional: 0 ≤ age ≤ 150. None é aceito."""
+    if value is None:
+        return None
+    if value < _MIN_AGE or value > _MAX_AGE:
+        raise InvalidAgeError(f"deve estar entre {_MIN_AGE} e {_MAX_AGE}")
+    return value
+
+
+def validate_profile_text(value: str | None, field_name: str) -> str | None:
+    """Valida campo demográfico de texto opcional (area, city): 1 a 128 chars.
+
+    None é aceito (campo não informado). Strings são normalizadas com strip().
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    if len(stripped) < 1:
+        raise InvalidProfileFieldError(field_name, "não pode ser vazio")
+    if len(stripped) > _MAX_PROFILE_TEXT:
+        raise InvalidProfileFieldError(
+            field_name, f"deve ter no máximo {_MAX_PROFILE_TEXT} caracteres"
+        )
+    return stripped
+
+
 # --- Entidade ---
 
 
@@ -132,6 +174,10 @@ class User:
     hashed_password: HashedPassword
     first_name: str
     last_name: str
+    age: int | None = None
+    area: str | None = None
+    gender: Gender | None = None
+    city: str | None = None
     access_level: list[str] = field(default_factory=list)
     is_active: bool = True
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -142,6 +188,12 @@ class User:
         # Validações adicionais
         self.first_name = validate_name_field(self.first_name, "first_name")
         self.last_name = validate_name_field(self.last_name, "last_name")
+        self.age = validate_age(self.age)
+        self.area = validate_profile_text(self.area, "area")
+        self.city = validate_profile_text(self.city, "city")
+        # Coerção defensiva: aceita string crua (ex.: leitura do repositório)
+        if self.gender is not None and not isinstance(self.gender, Gender):
+            self.gender = Gender(self.gender)
 
     # --- Métodos de mutação ---
 
@@ -160,6 +212,28 @@ class User:
     def change_name(self, new_first_name: str, new_last_name: str) -> None:
         self.first_name = validate_name_field(new_first_name, "first_name")
         self.last_name = validate_name_field(new_last_name, "last_name")
+        self._touch()
+
+    def change_demographics(
+        self,
+        age: int | None = None,
+        area: str | None = None,
+        gender: Gender | str | None = None,
+        city: str | None = None,
+    ) -> None:
+        """Atualiza campos demográficos. Valor None = não altera o campo.
+
+        Segue a convenção de atualização parcial do resto da entidade: só os
+        campos informados (não-None) são alterados; os demais são preservados.
+        """
+        if age is not None:
+            self.age = validate_age(age)
+        if area is not None:
+            self.area = validate_profile_text(area, "area")
+        if gender is not None:
+            self.gender = gender if isinstance(gender, Gender) else Gender(gender)
+        if city is not None:
+            self.city = validate_profile_text(city, "city")
         self._touch()
 
     def deactivate(self) -> None:
