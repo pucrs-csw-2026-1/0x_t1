@@ -5,6 +5,9 @@ from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 
 from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.adapters.config.settings import settings
+from app.adapters.config_service_client_repository import (
+    ConfigServiceClientRepository,
+)
 from app.adapters.dynamo_user_repository import DynamoUserRepository
 from app.adapters.in_memory_refresh_token_repository import (
     InMemoryRefreshTokenRepository,
@@ -99,4 +102,5 @@ def get_auth_service() -> AuthService:
         password_hasher=password_hasher,
         token_provider=token_provider,
         refresh_repository=_refresh_token_repository,
+        service_client_repository=ConfigServiceClientRepository(settings),
     )

@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     seed_admin_email: str = "admin@local.dev"
     seed_admin_password: str = "Admin@123"
 
+    # Cliente de serviço (OAuth2 client_credentials — US-28 parte 2). Em dev,
+    # um cliente seedado por configuração (secret em texto plano, como o
+    # seed_admin_password). Em produção, sobrescreva via env / cofre de segredos.
+    # scopes em lista separada por vírgula.
+    service_client_id: str = "metrics-service"
+    service_client_secret: str = "dev-metrics-secret"
+    service_client_scopes: str = "metrics:read"
+
 
 @lru_cache(maxsize=8)
 def read_key(path: str) -> str:

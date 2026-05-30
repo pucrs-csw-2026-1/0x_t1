@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import secrets
+
 from app.domain.access_level import scopes_for
 from app.domain.exceptions import (
+    InvalidClientError,
     InvalidCredentialsError,
     InvalidEmailError,
     TokenRevokedError,
@@ -9,12 +12,13 @@ from app.domain.exceptions import (
 from app.domain.user import Email
 from app.ports.password_hasher import PasswordHasher
 from app.ports.refresh_token_repository import RefreshTokenRepository
+from app.ports.service_client_repository import ServiceClientRepository
 from app.ports.token_provider import TokenProvider
 from app.ports.user_repository import UserRepository
 
 
 class AuthService:
-    """Use case de autenticação: login, refresh com revogação e logout."""
+    """Use case de autenticação: login, refresh, logout e client_credentials."""
 
     def __init__(
         self,
@@ -22,11 +26,39 @@ class AuthService:
         password_hasher: PasswordHasher,
         token_provider: TokenProvider,
         refresh_repository: RefreshTokenRepository | None = None,
+        service_client_repository: ServiceClientRepository | None = None,
     ) -> None:
         self._user_repository = user_repository
         self._password_hasher = password_hasher
         self._token_provider = token_provider
         self._refresh_repository = refresh_repository
+        self._service_client_repository = service_client_repository
+
+    def issue_service_token(self, client_id: str, client_secret: str) -> dict[str, str]:
+        """Emite um token de máquina via OAuth2 client_credentials.
+
+        Valida client_id + client_secret contra o registry e emite um token
+        com `principal_type=service` e os scopes do cliente. Sem refresh
+        token (padrão para client_credentials).
+
+        Raises:
+            InvalidClientError: se o cliente não existe ou o secret não bate.
+        """
+        client = (
+            self._service_client_repository.find_by_client_id(client_id)
+            if self._service_client_repository is not None
+            else None
+        )
+        # Comparação em tempo constante; mesmo erro para cliente inexistente
+        # ou secret errado (não vaza qual cliente existe).
+        if client is None or not secrets.compare_digest(client_secret, client.secret):
+            raise InvalidClientError()
+
+        access_token = self._token_provider.generate_service_token(
+            client_id=client.client_id,
+            scopes=client.scopes,
+        )
+        return {"access_token": access_token, "token_type": "bearer"}
 
     def login(self, email: str, password: str) -> dict[str, str]:
         """Autentica usuário com email e senha.

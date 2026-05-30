@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from app.adapters.api.dependencies import get_auth_service, get_current_user
 from app.application.auth_service import AuthService
 from app.domain.exceptions import (
+    InvalidClientError,
     InvalidCredentialsError,
     InvalidTokenError,
     TokenExpiredError,
@@ -58,6 +59,16 @@ class RefreshTokenResponse(BaseModel):
     )
 
 
+class ServiceTokenResponse(BaseModel):
+    access_token: str = Field(
+        ...,
+        description="JWT de acesso de máquina (principal_type=service).",
+    )
+    token_type: Literal["bearer"] = Field(
+        "bearer", description="Tipo do token. Sempre 'bearer'."
+    )
+
+
 class LogoutRequest(BaseModel):
     refresh_token: str = Field(
         ...,
@@ -95,6 +106,42 @@ def login(
             detail="Credenciais inválidas.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+
+
+@router.post(
+    "/token",
+    response_model=ServiceTokenResponse,
+    responses={
+        400: {"description": "grant_type não suportado."},
+        401: {"description": "Credenciais de cliente inválidas."},
+    },
+    description=(
+        "OAuth2 **client_credentials**: autentica um serviço (máquina) por "
+        "`client_id`/`client_secret` e emite um token com "
+        "`principal_type=service` e os scopes do cliente. Sem refresh token."
+    ),
+)
+def issue_service_token(
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+    grant_type: str = Form(..., description="Deve ser 'client_credentials'."),
+    client_id: str = Form(..., description="Identificador do cliente de serviço."),
+    client_secret: str = Form(..., description="Segredo do cliente de serviço."),
+) -> ServiceTokenResponse:
+    """Emite um token de serviço via OAuth2 client_credentials."""
+    if grant_type != "client_credentials":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="unsupported_grant_type",
+        )
+    try:
+        data = auth_service.issue_service_token(client_id, client_secret)
+    except InvalidClientError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciais de cliente inválidas.",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+    return ServiceTokenResponse(access_token=data["access_token"], token_type="bearer")
 
 
 @router.post(
