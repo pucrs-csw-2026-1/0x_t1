@@ -1,3 +1,4 @@
+from app.domain.access_level import Role
 from app.domain.user import Email, Gender, HashedPassword, User, Username
 from app.ports.user_repository import UserRepository
 
@@ -88,6 +89,22 @@ def test_round_trip_demographics_ausentes_continuam_none(
     assert found.area is None
     assert found.gender is None
     assert found.city is None
+
+
+def test_round_trip_preserves_role(repo: UserRepository) -> None:
+    """US-27: o papel (Role) sobrevive ao round-trip como enum."""
+    user = User(
+        username=Username("role.user"),
+        email=Email("role@example.com"),
+        hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+        first_name="Role",
+        last_name="User",
+        access_level=Role.ADMIN,
+    )
+    repo.save(user)
+    found = repo.find_by_id(user.id)
+    assert found is not None
+    assert found.access_level is Role.ADMIN
 
 
 def test_save_overwrites_existing(repo: UserRepository, valid_user: User) -> None:

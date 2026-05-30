@@ -16,7 +16,6 @@ from app.adapters.api.user_router import router
 from app.adapters.config.settings import Settings, settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.user_service import UserService
-from app.domain.access_level import AccessLevel
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
     InvalidCredentialsError,
@@ -29,8 +28,6 @@ from app.domain.exceptions import (
     WeakPasswordError,
 )
 from app.domain.user import Gender, User
-from tests.conftest import ADMIN_UUID, USER_UUID
-from tests.fakes.access_level_repository import FakeAccessLevelRepository
 from tests.fakes.user_repository import FakeUserRepository
 
 
@@ -258,11 +255,11 @@ class TestUserRouterRegister:
 
 
 class TestUserRouterRegisterAccessLevelDiscard:
-    """US-13: register publico nunca concede perfis elevados.
+    """US-27: register publico nunca concede papel elevado.
 
-    Critério de aceite: tentativa de auto-promocao via access_level no body
-    deve ser silenciosamente descartada e o usuario criado sempre com 'user'.
-    Cobre as 3 particoes: sem campo, lista vazia, payload com 'admin'.
+    Critério de aceite (segurança): tentativa de auto-promoção via
+    access_level no body é silenciosamente ignorada e o usuário é sempre
+    criado como PARTICIPANT.
     """
 
     def _post_register(
@@ -271,19 +268,9 @@ class TestUserRouterRegisterAccessLevelDiscard:
         client: TestClient,
         body: dict[str, object],
     ) -> tuple[int, dict[str, object]]:
-        """Roda POST /users/register usando UserService real com fakes,
+        """Roda POST /users/register usando UserService real com fake repo,
         para que access_level do response reflita o que o service decidiu."""
-        fake_user_repo = FakeUserRepository()
-        fake_access_level_repo = FakeAccessLevelRepository(
-            levels=[
-                AccessLevel(id=ADMIN_UUID, title="admin"),
-                AccessLevel(id=USER_UUID, title="user"),
-            ]
-        )
-        service = UserService(
-            user_repo=fake_user_repo,
-            access_level_repo=fake_access_level_repo,
-        )
+        service = UserService(user_repo=FakeUserRepository())
 
         app.dependency_overrides[get_user_service] = lambda: service
 
@@ -292,12 +279,12 @@ class TestUserRouterRegisterAccessLevelDiscard:
         app.dependency_overrides.clear()
         return response.status_code, response.json()
 
-    def test_register_sem_access_level_cria_como_user(
+    def test_register_sem_access_level_cria_como_participant(
         self,
         app: FastAPI,
         client: TestClient,
     ) -> None:
-        """CT-13.4-01: payload sem access_level cria com perfil 'user'."""
+        """CT-27.R01: payload sem access_level cria como PARTICIPANT."""
         status_code, body = self._post_register(
             app,
             client,
@@ -311,37 +298,16 @@ class TestUserRouterRegisterAccessLevelDiscard:
         )
 
         assert status_code == 201
-        assert body["access_level"] == [USER_UUID]
-
-    def test_register_com_access_level_vazio_cria_como_user(
-        self,
-        app: FastAPI,
-        client: TestClient,
-    ) -> None:
-        """CT-13.4-02: payload com access_level=[] cria com perfil 'user'."""
-        status_code, body = self._post_register(
-            app,
-            client,
-            {
-                "first_name": "Joao",
-                "last_name": "Silva",
-                "username": "joao.silva",
-                "email": "joao@example.com",
-                "password": "S3nh@Forte!",
-                "access_level": [],
-            },
-        )
-
-        assert status_code == 201
-        assert body["access_level"] == [USER_UUID]
+        assert body["access_level"] == "PARTICIPANT"
 
     def test_register_com_admin_no_payload_eh_silenciosamente_descartado(
         self,
         app: FastAPI,
         client: TestClient,
     ) -> None:
-        """CT-13.4-03: payload com access_level=[ADMIN_UUID] (auto-promocao)
-        eh aceito sem 422 mas o usuario eh criado como 'user'."""
+        """CT-27.R02 (BLOQUEANTE): tentativa de auto-promoção — payload com
+        access_level='ADMIN' é aceito sem erro mas o usuário é criado como
+        PARTICIPANT. O campo nem existe em UserCreate, então é ignorado."""
         status_code, body = self._post_register(
             app,
             client,
@@ -351,13 +317,12 @@ class TestUserRouterRegisterAccessLevelDiscard:
                 "username": "joao.silva",
                 "email": "joao@example.com",
                 "password": "S3nh@Forte!",
-                "access_level": [ADMIN_UUID],
+                "access_level": "ADMIN",
             },
         )
 
         assert status_code == 201
-        assert body["access_level"] == [USER_UUID]
-        assert ADMIN_UUID not in body["access_level"]
+        assert body["access_level"] == "PARTICIPANT"
 
 
 class TestUserRouterAuthProtection:
@@ -853,17 +818,8 @@ class TestUserRouterUpdateProfile:
         valid_user: User,
     ) -> None:
         fake_user_repo = FakeUserRepository()
-        fake_access_level_repo = FakeAccessLevelRepository(
-            levels=[
-                AccessLevel(id=ADMIN_UUID, title="admin"),
-                AccessLevel(id=USER_UUID, title="user"),
-            ]
-        )
         fake_user_repo.save(valid_user)
-        service = UserService(
-            user_repo=fake_user_repo,
-            access_level_repo=fake_access_level_repo,
-        )
+        service = UserService(user_repo=fake_user_repo)
 
         app.dependency_overrides[get_current_user] = lambda: valid_user.id
         app.dependency_overrides[get_user_service] = lambda: service
@@ -1018,17 +974,9 @@ class TestUserRouterDemographics:
         client: TestClient,
         body: dict[str, object],
     ) -> tuple[int, dict[str, Any]]:
-        """POST /users/register com UserService real + fakes, para que o
+        """POST /users/register com UserService real + fake repo, para que o
         response reflita os campos efetivamente persistidos."""
-        service = UserService(
-            user_repo=FakeUserRepository(),
-            access_level_repo=FakeAccessLevelRepository(
-                levels=[
-                    AccessLevel(id=ADMIN_UUID, title="admin"),
-                    AccessLevel(id=USER_UUID, title="user"),
-                ]
-            ),
-        )
+        service = UserService(user_repo=FakeUserRepository())
         app.dependency_overrides[get_user_service] = lambda: service
         response = client.post("/users/register", json=body)
         app.dependency_overrides.clear()

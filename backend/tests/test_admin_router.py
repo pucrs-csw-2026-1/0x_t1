@@ -18,9 +18,8 @@ from app.adapters.api.dependencies import get_user_service
 from app.adapters.config.settings import settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.user_service import UserService
+from app.domain.access_level import Role
 from app.domain.user import Email, HashedPassword, User, Username
-from tests.conftest import ADMIN_UUID, USER_UUID
-from tests.fakes.access_level_repository import FakeAccessLevelRepository
 from tests.fakes.user_repository import FakeUserRepository
 
 USER_ID = "usuario-123"
@@ -165,12 +164,8 @@ class TestAdminListUsers:
         self,
         app: FastAPI,
         admin_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> Iterator[FastAPI]:
-        service = UserService(
-            user_repo=admin_repo,
-            access_level_repo=fake_access_level_repo,
-        )
+        service = UserService(user_repo=admin_repo)
         app.dependency_overrides[get_user_service] = lambda: service
         yield app
         app.dependency_overrides.clear()
@@ -329,11 +324,10 @@ class TestAdminGetUser:
         self,
         app: FastAPI,
         target_user: User,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> Iterator[FastAPI]:
         repo = FakeUserRepository()
         repo.save(target_user)
-        service = UserService(user_repo=repo, access_level_repo=fake_access_level_repo)
+        service = UserService(user_repo=repo)
         app.dependency_overrides[get_user_service] = lambda: service
         yield app
         app.dependency_overrides.clear()
@@ -418,7 +412,7 @@ class TestAdminUpdateUser:
             hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
             first_name="Target",
             last_name="User",
-            access_level=[USER_UUID],
+            access_level=Role.PARTICIPANT,
         )
 
     @pytest.fixture
@@ -426,11 +420,10 @@ class TestAdminUpdateUser:
         self,
         app: FastAPI,
         target_user: User,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> Iterator[FastAPI]:
         repo = FakeUserRepository()
         repo.save(target_user)
-        service = UserService(user_repo=repo, access_level_repo=fake_access_level_repo)
+        service = UserService(user_repo=repo)
         app.dependency_overrides[get_user_service] = lambda: service
         yield app
         app.dependency_overrides.clear()
@@ -456,7 +449,7 @@ class TestAdminUpdateUser:
         assert response.status_code == 200
         assert response.json()["is_active"] is False
 
-    # CT-18.U02: alterar access_level com UUID válido → 200
+    # CT-18.U02: alterar o papel para um valor válido do enum → 200
     def test_patch_user_access_level_valido_retorna_200(
         self,
         admin_client: TestClient,
@@ -466,14 +459,14 @@ class TestAdminUpdateUser:
 
         response = admin_client.patch(
             f"/admin/users/{self.TARGET_ID}",
-            json={"access_level": [ADMIN_UUID]},
+            json={"access_level": "MANAGER"},
             headers={"Authorization": f"Bearer {token}"},
         )
 
         assert response.status_code == 200
-        assert ADMIN_UUID in response.json()["access_level"]
+        assert response.json()["access_level"] == "MANAGER"
 
-    # CT-18.U03: access_level com UUID inválido → 422
+    # CT-18.U03: papel fora do enum → 422
     def test_patch_user_access_level_invalido_retorna_422(
         self,
         admin_client: TestClient,
@@ -483,7 +476,7 @@ class TestAdminUpdateUser:
 
         response = admin_client.patch(
             f"/admin/users/{self.TARGET_ID}",
-            json={"access_level": ["uuid-que-nao-existe"]},
+            json={"access_level": "SUPERADMIN"},
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -494,7 +487,6 @@ class TestAdminUpdateUser:
         self,
         app: FastAPI,
         token_provider: JwtTokenProvider,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         admin_user = User(
             id=self.ADMIN_ID,
@@ -503,11 +495,11 @@ class TestAdminUpdateUser:
             hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
             first_name="Admin",
             last_name="User",
-            access_level=[ADMIN_UUID],
+            access_level=Role.ADMIN,
         )
         repo = FakeUserRepository()
         repo.save(admin_user)
-        service = UserService(user_repo=repo, access_level_repo=fake_access_level_repo)
+        service = UserService(user_repo=repo)
         app.dependency_overrides[get_user_service] = lambda: service
 
         token = token_provider.generate_access_token(self.ADMIN_ID, scopes=["admin"])
@@ -588,11 +580,10 @@ class TestAdminDeleteUser:
         self,
         app: FastAPI,
         target_user: User,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> Iterator[FastAPI]:
         repo = FakeUserRepository()
         repo.save(target_user)
-        service = UserService(user_repo=repo, access_level_repo=fake_access_level_repo)
+        service = UserService(user_repo=repo)
         app.dependency_overrides[get_user_service] = lambda: service
         yield app
         app.dependency_overrides.clear()
