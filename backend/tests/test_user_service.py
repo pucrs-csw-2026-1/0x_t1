@@ -12,6 +12,7 @@ from app.domain.access_level import AccessLevel
 from app.domain.exceptions import (
     AccessLevelNotFoundError,
     EmailAlreadyExistsError,
+    InvalidAgeError,
     InvalidCredentialsError,
     InvalidEmailError,
     InvalidNameError,
@@ -22,7 +23,7 @@ from app.domain.exceptions import (
     UserNotFoundError,
     WeakPasswordError,
 )
-from app.domain.user import Email, HashedPassword, User, Username
+from app.domain.user import Email, Gender, HashedPassword, User, Username
 from app.ports.password_hasher import PasswordHasher
 from tests.conftest import USER_UUID
 from tests.fakes.access_level_repository import FakeAccessLevelRepository
@@ -132,6 +133,62 @@ class TestUserServiceRegister:
         assert fetched is not None
         assert fetched.id == user.id
         assert fetched.access_level == [USER_UUID]
+
+    # US-26: register com demografia persiste os 4 campos
+    def test_register_com_demografia_persiste_os_campos(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
+
+        user = service.register(
+            first_name="Ana",
+            last_name="Souza",
+            username="ana.souza",
+            email="ana@example.com",
+            password="S3nh@Forte!",
+            age=28,
+            area="Saúde",
+            gender=Gender.F,
+            city="Curitiba",
+        )
+
+        assert user.age == 28
+        assert user.area == "Saúde"
+        assert user.gender is Gender.F
+        assert user.city == "Curitiba"
+        fetched = fake_repo.find_by_id(user.id)
+        assert fetched is not None
+        assert fetched.age == 28
+        assert fetched.gender is Gender.F
+
+    # US-26: register sem demografia mantem os campos None
+    def test_register_sem_demografia_mantem_none(
+        self,
+        fake_repo: FakeUserRepository,
+        fake_access_level_repo: FakeAccessLevelRepository,
+    ) -> None:
+        service = UserService(
+            user_repo=fake_repo,
+            access_level_repo=fake_access_level_repo,
+        )
+
+        user = service.register(
+            first_name="Ana",
+            last_name="Souza",
+            username="ana.souza",
+            email="ana@example.com",
+            password="S3nh@Forte!",
+        )
+
+        assert user.age is None
+        assert user.area is None
+        assert user.gender is None
+        assert user.city is None
 
     # US-13 - particao 1: register sem campo access_level no payload eh aceito
     # (ja coberto pelo teste acima, que nao passa o parametro).
@@ -790,6 +847,33 @@ class TestUserServiceUpdateProfile:
         fetched = fake_repo.find_by_id(saved_user.id)
         assert fetched is not None
         assert fetched.first_name == "Persistida"
+
+    # US-26: atualização de demografia altera só os campos informados
+    def test_update_profile_atualiza_demografia(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+        saved_user: User,
+    ) -> None:
+        result = service.update_profile(saved_user.id, age=45, city="Florianópolis")
+
+        assert result.age == 45
+        assert result.city == "Florianópolis"
+        # campos não informados não são tocados
+        assert result.area is None
+        assert result.gender is None
+        fetched = fake_repo.find_by_id(saved_user.id)
+        assert fetched is not None
+        assert fetched.age == 45
+
+    # US-26: demografia inválida no update lança exceção de domínio
+    def test_update_profile_demografia_invalida_lanca_excecao(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        with pytest.raises(InvalidAgeError):
+            service.update_profile(saved_user.id, age=999)
 
 
 class TestUserServiceChangePassword:

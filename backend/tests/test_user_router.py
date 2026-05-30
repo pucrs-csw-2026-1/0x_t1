@@ -28,7 +28,7 @@ from app.domain.exceptions import (
     UserNotFoundError,
     WeakPasswordError,
 )
-from app.domain.user import User
+from app.domain.user import Gender, User
 from tests.conftest import ADMIN_UUID, USER_UUID
 from tests.fakes.access_level_repository import FakeAccessLevelRepository
 from tests.fakes.user_repository import FakeUserRepository
@@ -626,6 +626,10 @@ class TestUserRouterUpdateProfile:
             last_name=None,
             email=None,
             username=None,
+            age=None,
+            area=None,
+            gender=None,
+            city=None,
         )
 
     # CT-15.R02 (CA-07): sem token retorna 401
@@ -815,6 +819,10 @@ class TestUserRouterUpdateProfile:
             last_name=None,
             email=None,
             username=None,
+            age=None,
+            area=None,
+            gender=None,
+            city=None,
         )
 
     # CT-15.R11: usuário não encontrado retorna 404
@@ -999,3 +1007,187 @@ class TestUserRouterChangePassword:
         app.dependency_overrides.clear()
 
         assert response.status_code == 404
+
+
+class TestUserRouterDemographics:
+    """US-26: campos demográficos no cadastro, perfil e atualização."""
+
+    def _post_register(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        body: dict[str, object],
+    ) -> tuple[int, dict[str, Any]]:
+        """POST /users/register com UserService real + fakes, para que o
+        response reflita os campos efetivamente persistidos."""
+        service = UserService(
+            user_repo=FakeUserRepository(),
+            access_level_repo=FakeAccessLevelRepository(
+                levels=[
+                    AccessLevel(id=ADMIN_UUID, title="admin"),
+                    AccessLevel(id=USER_UUID, title="user"),
+                ]
+            ),
+        )
+        app.dependency_overrides[get_user_service] = lambda: service
+        response = client.post("/users/register", json=body)
+        app.dependency_overrides.clear()
+        return response.status_code, response.json()
+
+    _BASE = {
+        "first_name": "Ana",
+        "last_name": "Souza",
+        "username": "ana.souza",
+        "email": "ana@example.com",
+        "password": "S3nh@Forte!",
+    }
+
+    # CT-26.R01: register com demografia retorna os campos no response
+    def test_register_com_demografia_retorna_campos(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        status_code, body = self._post_register(
+            app,
+            client,
+            {
+                **self._BASE,
+                "age": 28,
+                "area": "Saúde",
+                "gender": "F",
+                "city": "Curitiba",
+            },
+        )
+
+        assert status_code == 201
+        assert body["age"] == 28
+        assert body["area"] == "Saúde"
+        assert body["gender"] == "F"
+        assert body["city"] == "Curitiba"
+
+    # CT-26.R02: register sem demografia retorna os campos como null
+    def test_register_sem_demografia_retorna_null(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        status_code, body = self._post_register(app, client, dict(self._BASE))
+
+        assert status_code == 201
+        assert body["age"] is None
+        assert body["area"] is None
+        assert body["gender"] is None
+        assert body["city"] is None
+
+    # CT-26.R03 (valor-limite): idade fora de 0–150 retorna 422 (Pydantic)
+    @pytest.mark.parametrize("age", [-1, 151])
+    def test_register_idade_fora_do_intervalo_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        age: int,
+    ) -> None:
+        status_code, _ = self._post_register(app, client, {**self._BASE, "age": age})
+
+        assert status_code == 422
+
+    # CT-26.R04: gênero fora do enum retorna 422 (Pydantic)
+    def test_register_genero_invalido_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        status_code, _ = self._post_register(
+            app, client, {**self._BASE, "gender": "MASCULINO"}
+        )
+
+        assert status_code == 422
+
+    # CT-26.R05: area acima de 128 chars retorna 422 (Pydantic)
+    def test_register_area_longa_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        status_code, _ = self._post_register(
+            app, client, {**self._BASE, "area": "x" * 129}
+        )
+
+        assert status_code == 422
+
+    # CT-26.R06: GET /me expõe os campos demográficos
+    def test_get_me_retorna_demografia(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        valid_user.age = 30
+        valid_user.area = "Engenharia"
+        valid_user.gender = Gender.OUTRO
+        valid_user.city = "Porto Alegre"
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.get_user_by_id.return_value = valid_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.get("/users/me")
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["age"] == 30
+        assert data["area"] == "Engenharia"
+        assert data["gender"] == "OUTRO"
+        assert data["city"] == "Porto Alegre"
+
+    # CT-26.R07: PATCH /me repassa demografia ao service
+    def test_patch_me_demografia_e_repassada_ao_service(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.return_value = valid_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"age": 40, "city": "Recife"})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        user_service_mock.update_profile.assert_called_once_with(
+            user_id=valid_user.id,
+            first_name=None,
+            last_name=None,
+            email=None,
+            username=None,
+            age=40,
+            area=None,
+            gender=None,
+            city="Recife",
+        )
+
+    # CT-26.R08 (valor-limite): PATCH com idade inválida retorna 422 (Pydantic)
+    def test_patch_me_idade_invalida_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"age": 200})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422
