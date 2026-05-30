@@ -16,7 +16,7 @@ auth:bearer {
 
 body:json {
   {
-    "access_level": ["{{user_uuid}}", "{{admin_uuid}}"]
+    "access_level": "ADMIN"
   }
 }
 
@@ -26,15 +26,13 @@ assert {
 }
 
 tests {
-  test("US-18: PATCH retorna access_level atualizado com 2 UUIDs", function() {
-    expect(res.body.access_level).to.be.an("array").with.lengthOf(2);
-    expect(res.body.access_level).to.include(bru.getVar("admin_uuid"));
-    expect(res.body.access_level).to.include(bru.getVar("user_uuid"));
+  test("US-27: PATCH retorna o papel atualizado (ADMIN)", function() {
+    expect(res.body.access_level).to.equal("ADMIN");
   });
 }
 
 docs {
   Promove o usuario alvo a admin via API (substitui o passo manual
-  de update-item no DDB documentado em 03_Auth_Access/04). E um
-  bonus operacional do US-18 mencionado no README.
+  de update-item no DDB documentado em 03_Auth_Access/04). Com a US-27
+  o papel e um enum unico (string), nao mais lista de UUIDs.
 }

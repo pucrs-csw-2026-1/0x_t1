@@ -19,4 +19,16 @@ assert {
   res.body.id: eq {{user_id}}
   res.body.email: eq {{email}}
   res.body.username: eq {{username}}
+  res.body.access_level: eq PARTICIPANT
+  res.body.age: eq 30
+  res.body.area: eq Engenharia
+  res.body.gender: eq OUTRO
+  res.body.city: eq Porto Alegre
+}
+
+tests {
+  test("US-26: GET /me expõe os campos demográficos do cadastro", function() {
+    expect(res.body.age).to.equal(30);
+    expect(res.body.city).to.equal("Porto Alegre");
+  });
 }

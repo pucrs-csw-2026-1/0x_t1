@@ -16,7 +16,7 @@ auth:bearer {
 
 body:json {
   {
-    "access_level": ["11111111-1111-1111-1111-111111111111"]
+    "access_level": "SUPERADMIN"
   }
 }
 
@@ -25,7 +25,6 @@ assert {
 }
 
 docs {
-  US-18: access_level recebe lista de UUIDs que precisam existir no
-  catalogo (tabela access_level). UUID valido mas inexistente ->
-  AccessLevelNotFoundError -> 422.
+  US-27: access_level e um enum (PARTICIPANT/MANAGER/ADMIN). Valor fora
+  do enum e rejeitado pela validacao do Pydantic -> 422.
 }

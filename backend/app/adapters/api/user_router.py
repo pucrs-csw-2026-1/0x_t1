@@ -6,19 +6,21 @@ from pydantic import BaseModel, Field
 
 from app.adapters.api.dependencies import get_current_user, get_user_service
 from app.application.user_service import UserService
+from app.domain.access_level import Role
 from app.domain.exceptions import (
-    AccessLevelNotFoundError,
     EmailAlreadyExistsError,
+    InvalidAgeError,
     InvalidCredentialsError,
     InvalidEmailError,
     InvalidNameError,
+    InvalidProfileFieldError,
     InvalidUsernameError,
     SamePasswordError,
     UsernameAlreadyExistsError,
     UserNotFoundError,
     WeakPasswordError,
 )
-from app.domain.user import User
+from app.domain.user import Gender, User
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -35,10 +37,22 @@ class UserResponse(BaseModel):
     email: str = Field(
         ..., description="Endereço de email do usuário.", examples=["juca@email.com"]
     )
-    access_level: list[str] = Field(
+    age: int | None = Field(
+        None, description="Idade do usuário (0–150).", examples=[30]
+    )
+    area: str | None = Field(
+        None, description="Área de atuação do usuário.", examples=["Engenharia"]
+    )
+    gender: Gender | None = Field(
+        None, description="Gênero declarado pelo usuário.", examples=["OUTRO"]
+    )
+    city: str | None = Field(
+        None, description="Cidade do usuário.", examples=["Porto Alegre"]
+    )
+    access_level: Role = Field(
         ...,
-        description="Níveis de acesso do usuário.",
-        examples=[["9e556479-7003-5916-9cd6-33f4227cec9b"]],
+        description="Papel único do usuário (PARTICIPANT, MANAGER ou ADMIN).",
+        examples=["PARTICIPANT"],
     )
     is_active: bool = Field(
         ..., description="Indica se o usuário está ativo.", examples=[True]
@@ -62,6 +76,26 @@ class UserUpdate(BaseModel):
     )
     username: str | None = Field(
         None, description="Novo username.", examples=["juca.bala"]
+    )
+    age: int | None = Field(
+        None, ge=0, le=150, description="Nova idade (0–150).", examples=[30]
+    )
+    area: str | None = Field(
+        None,
+        min_length=1,
+        max_length=128,
+        description="Nova área de atuação.",
+        examples=["Engenharia"],
+    )
+    gender: Gender | None = Field(
+        None, description="Novo gênero declarado.", examples=["OUTRO"]
+    )
+    city: str | None = Field(
+        None,
+        min_length=1,
+        max_length=128,
+        description="Nova cidade.",
+        examples=["Porto Alegre"],
     )
 
 
@@ -107,10 +141,25 @@ class UserCreate(BaseModel):
         ),
         examples=["Senha@123"],
     )
-    access_level: list[str] | None = Field(
-        default=None,
-        deprecated=True,
-        description="Ignorado. Cadastro público sempre cria perfil 'user'.",
+    age: int | None = Field(
+        None, ge=0, le=150, description="Idade do usuário (0–150).", examples=[30]
+    )
+    area: str | None = Field(
+        None,
+        min_length=1,
+        max_length=128,
+        description="Área de atuação do usuário.",
+        examples=["Engenharia"],
+    )
+    gender: Gender | None = Field(
+        None, description="Gênero declarado pelo usuário.", examples=["OUTRO"]
+    )
+    city: str | None = Field(
+        None,
+        min_length=1,
+        max_length=128,
+        description="Cidade do usuário.",
+        examples=["Porto Alegre"],
     )
 
 
@@ -121,6 +170,10 @@ def to_user_response(user: User) -> UserResponse:
         last_name=user.last_name,
         username=user.username.value,
         email=user.email.value,
+        age=user.age,
+        area=user.area,
+        gender=user.gender,
+        city=user.city,
         access_level=user.access_level,
         is_active=user.is_active,
         created_at=user.created_at,
@@ -186,6 +239,10 @@ def update_me(
             last_name=payload.last_name,
             email=payload.email,
             username=payload.username,
+            age=payload.age,
+            area=payload.area,
+            gender=payload.gender,
+            city=payload.city,
         )
     except UserNotFoundError as exc:
         raise HTTPException(
@@ -197,7 +254,13 @@ def update_me(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         ) from exc
-    except (InvalidEmailError, InvalidUsernameError, InvalidNameError) as exc:
+    except (
+        InvalidEmailError,
+        InvalidUsernameError,
+        InvalidNameError,
+        InvalidAgeError,
+        InvalidProfileFieldError,
+    ) as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
@@ -260,7 +323,7 @@ def change_password(
         201: {"description": "Usuário criado com sucesso."},
         400: {"description": "Dados inválidos (email, senha, username ou nome)."},
         409: {"description": "Email já cadastrado."},
-        500: {"description": "Catálogo de níveis de acesso não provisionado."},
+        422: {"description": "Campo demográfico inválido (age, area, gender, city)."},
     },
 )
 def register_user(
@@ -274,6 +337,10 @@ def register_user(
             username=payload.username,
             email=payload.email,
             password=payload.password,
+            age=payload.age,
+            area=payload.area,
+            gender=payload.gender,
+            city=payload.city,
         )
     except EmailAlreadyExistsError as exc:
         raise HTTPException(
@@ -290,13 +357,10 @@ def register_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
         ) from exc
-    except AccessLevelNotFoundError as exc:
+    except (InvalidAgeError, InvalidProfileFieldError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=(
-                "Catálogo de níveis de acesso não provisionado. "
-                "Verifique a infraestrutura (terraform apply)."
-            ),
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
         ) from exc
     return to_user_response(user)
 

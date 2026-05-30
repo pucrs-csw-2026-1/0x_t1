@@ -23,6 +23,15 @@ class TokenProvider(ABC):
         ...
 
     @abstractmethod
+    def generate_service_token(self, client_id: str, scopes: list[str]) -> str:
+        """Gera um access token de máquina (OAuth2 client_credentials).
+
+        O token carrega ``principal_type=service`` e ``sub=client_id``,
+        distinguindo identidade de máquina de identidade de pessoa.
+        """
+        ...
+
+    @abstractmethod
     def decode_token(self, token: str) -> dict[str, Any]:
         """Decodifica e valida o token, retornando seu payload.
 

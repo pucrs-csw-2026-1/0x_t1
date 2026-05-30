@@ -34,6 +34,20 @@ class InvalidNameError(DomainError):
         super().__init__(f"Nome inválido: {reason}")
 
 
+class InvalidAgeError(DomainError):
+    """Exceção para idade inválida (fora do intervalo 0–150)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"Idade inválida: {reason}")
+
+
+class InvalidProfileFieldError(DomainError):
+    """Exceção para campo demográfico de texto inválido (area, city)."""
+
+    def __init__(self, field_name: str, reason: str) -> None:
+        super().__init__(f"Campo '{field_name}' inválido: {reason}")
+
+
 class EmailAlreadyExistsError(DomainError):
     """Exceção para email já existente."""
 
@@ -53,6 +67,13 @@ class InvalidCredentialsError(DomainError):
 
     def __init__(self) -> None:
         super().__init__("Credenciais inválidas.")
+
+
+class InvalidClientError(DomainError):
+    """Exceção para credenciais de cliente de serviço inválidas (client_credentials)."""
+
+    def __init__(self) -> None:
+        super().__init__("Credenciais de cliente inválidas.")
 
 
 class SamePasswordError(DomainError):
@@ -95,13 +116,6 @@ class UserNotFoundError(DomainError):
 
     def __init__(self, user_id: str) -> None:
         super().__init__(f"Usuário não encontrado: {user_id}")
-
-
-class AccessLevelNotFoundError(DomainError):
-    """Exceção para nível de acesso não encontrado."""
-
-    def __init__(self, title: str) -> None:
-        super().__init__(f"Nível de acesso não encontrado: {title}")
 
 
 class InvalidPaginationError(DomainError):

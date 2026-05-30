@@ -15,24 +15,19 @@ from app.adapters.api.dependencies import (
     get_current_user,
     get_user_service,
 )
-from app.adapters.config.settings import Settings
+from app.adapters.config.settings import Settings, read_key
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.auth_service import AuthService
 from app.application.user_service import UserService
 
-SECRET = "chave-secreta-de-teste"
-ALGORITHM = "HS256"
+ALGORITHM = "RS256"
 USER_ID = "usuario-123"
+PRIVATE_KEY = read_key("keys/dev_private.pem")
 
 
 @pytest.fixture
 def token_provider() -> JwtTokenProvider:
-    s = Settings(  # type: ignore[call-arg]
-        secret_key=SECRET,
-        algorithm=ALGORITHM,
-        access_token_expire_minutes=30,
-        refresh_token_expire_days=7,
-    )
+    s = Settings(algorithm=ALGORITHM)  # type: ignore[call-arg]
     return JwtTokenProvider(s)
 
 
@@ -125,7 +120,7 @@ class TestRequireScope:
             "scopes": ["user"],
             "exp": datetime.now(timezone.utc) - timedelta(hours=1),
         }
-        expired_token = jwt.encode(expired_payload, SECRET, algorithm=ALGORITHM)
+        expired_token = jwt.encode(expired_payload, PRIVATE_KEY, algorithm=ALGORITHM)
 
         with pytest.raises(HTTPException) as exc_info:
             _call(token_provider, expired_token, required_scopes=[])

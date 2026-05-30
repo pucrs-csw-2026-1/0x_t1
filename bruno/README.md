@@ -31,7 +31,7 @@ quando algo falha.
 ```bash
 # 1) Ministack (na raiz do projeto)
 cd terraform && docker compose up -d
-terraform apply -auto-approve   # seed do catálogo access_level
+terraform apply -auto-approve   # provisiona a tabela 'user'
 
 # 2) App FastAPI
 cd backend && uvicorn app.main:app --reload
@@ -47,9 +47,10 @@ Quando o app sobe em modo dev, dois bootstraps automáticos rodam:
 
 1. **Tabela `user`** — criada se não existir (útil quando a Ministack foi
    recriada e ninguém lembrou de rodar `terraform apply`).
-2. **Admin root** — criado se ainda não existir e o catálogo
-   `access_level` estiver seedado. Credenciais: `admin@local.dev` /
-   `Admin@123`. Login com elas devolve JWT com `scopes=["user", "admin"]`.
+2. **Admin root** — criado se ainda não existir (papel definido como `ADMIN`
+   no código). Credenciais: `admin@local.dev` / `Admin@123`. Login com elas
+   devolve JWT com os scopes cumulativos de ADMIN:
+   `scopes=["participant", "manager", "admin"]`.
 
 Isso **substitui o setup manual** via `aws dynamodb update-item` que existia
 em versões anteriores. Pra promover **outros** usuários a admin, ver a
@@ -87,12 +88,11 @@ em 4 grupos por persona/função:
 | `admin_user_id` | populada por `00_Setup_Admin/02_Get_Admin_Id` | secret |
 | `seed_admin_access_token`, `seed_admin_user_id` | populadas por `09_Demo_Completa/12+13` (vars separadas para isolar o estado da demo) | secret |
 
-### Constantes do catálogo
+### Papéis (`access_level`)
 
-| Var | Valor |
-|---|---|
-| `admin_uuid` | `bace0701-15e3-5144-97c5-47487d543032` |
-| `user_uuid` | `9e556479-7003-5916-9cd6-33f4227cec9b` |
+A partir da US-27 o papel é um enum no código — não há mais UUIDs de catálogo.
+Os requests usam os valores literais `PARTICIPANT`, `MANAGER` e `ADMIN`.
+(As vars `admin_uuid`/`user_uuid` em `Local.bru` ficaram obsoletas.)
 
 São UUIDs deterministicos (uuidv5 com mesmo namespace que o seed do
 Terraform). Disponíveis pra construir requests admin sem precisar olhar
@@ -163,12 +163,12 @@ Pega os ramos de erro do mapa `domain → HTTP`:
 
 ### `03_Auth_Access/` (US-13)
 
-Cobre os critérios da US-13 (catálogo de perfis + scopes semânticos no JWT
+Cobre os critérios da US-13/US-27 (papel enum + scopes cumulativos no JWT
 + atribuição segura no cadastro).
 
 | # | Cenário | Espera |
 |---|---|---|
-| 01 | Register com `access_level: ["<UUID-admin>"]` no body | 201, mas response com `access_level=[<UUID-user>]` (descarte silencioso) |
+| 01 | Register com `access_level: "ADMIN"` no body | 201, mas response com `access_level="PARTICIPANT"` (descarte silencioso) |
 | 02 | `/admin/ping` sem token | 401 "Token ausente" |
 | 03 | `/admin/ping` com token de user normal | 403 "permissão insuficiente: requer 'admin'" |
 | 04 | `/admin/ping` com token admin | 200 — precisa de `admin_access_token` |
@@ -239,9 +239,9 @@ is_active) e DELETE.
 | 02 | `GET /admin/users/{id}` | 200 |
 | 03 | `GET` com UUID inexistente | 404 |
 | 04 | `GET` com token de user normal | 403 |
-| 05 | `PATCH` access_level (promove target a admin) | 200 |
+| 05 | `PATCH` access_level=`"ADMIN"` (promove target a admin) | 200 |
 | 06 | `PATCH` com UUID inexistente | 404 |
-| 07 | `PATCH` access_level com UUID que não existe no catálogo | 422 |
+| 07 | `PATCH` access_level com valor fora do enum | 422 |
 | 08 | `DELETE` admin tentando deletar a si mesmo | 400 |
 | 09 | `DELETE` com token de user normal | 403 |
 | 10 | `DELETE` target user | 204 |
@@ -281,7 +281,7 @@ Pra promover **outro** usuário (ex: dar admin a um user já cadastrado),
 duas opções:
 
 - **Via API** (preferida) — logado como admin, `PATCH /admin/users/{id}`
-  com `{"access_level": ["<user_uuid>", "<admin_uuid>"]}`. Ver
+  com `{"access_level": "ADMIN"}`. Ver
   [`08_Admin_User_Management/05_Admin_Update_User_200.bru`](08_Admin_User_Management/05_Admin_Update_User_200.bru)
   como referência.
 - **Via DDB direto** (último caso, debug) — `aws dynamodb update-item`.
@@ -289,7 +289,7 @@ duas opções:
   rodar com `<USER_ID>` literal cria item órfão (vide "Limpando items
   órfãos" no troubleshooting).
 
-Depois da promoção, exigir **login NOVO** do user: o JWT só herda scope
+Depois da promoção, exigir **login NOVO** do user: o JWT só herda o scope
 `admin` em logins emitidos após a mudança de `access_level`.
 
 ## Troubleshooting
@@ -300,10 +300,10 @@ Depois da promoção, exigir **login NOVO** do user: o JWT só herda scope
 | 401 `Token ausente` em requests admin | Var `admin_access_token` (ou `seed_admin_access_token`) vazia ou expirada | Rodar `00_Setup_Admin/01` + `02` de novo |
 | 401 `Token inválido` em requests admin | Token colado com `Bearer ` duplicado, aspas, ou espaço extra | Colar **só** o JWT cru (sem prefixo, sem aspas) |
 | 401 `Token expirado` | Mais de 30min desde o login (default `access_token_expire_minutes`) | Re-rodar login e re-popular o token |
-| 403 `requer 'admin'` | Token foi gerado **antes** da promoção (scopes=`["user"]`) | Refazer login pós-promoção. Decoda em jwt.io pra conferir scopes |
+| 403 `requer 'admin'` | Token foi gerado **antes** da promoção (scopes=`["participant"]`) | Refazer login pós-promoção. Decoda em jwt.io pra conferir scopes |
 | 500 `KeyError: 'email'` em `/admin/users` | Item órfão na tabela (provável `update-item` com `<USER_ID>` literal, criando `id=""`) | Identificar e deletar o item parcial (vide próxima subseção) |
 | 409 no `09_Demo_Completa/01` no re-run | `demo@svc.local` já cadastrado em run anterior | `docker compose down -v && terraform apply` pra zerar |
-| Lifespan log `falhou ao seedar admin` | Catálogo `access_level` vazio (terraform não rodou) | `cd terraform && terraform apply -auto-approve` antes de re-iniciar uvicorn |
+| Lifespan log `falhou ao seedar admin` | Tabela `user` ausente (Ministack/terraform não rodou) | `cd terraform && docker compose up -d && terraform apply -auto-approve` antes de re-iniciar uvicorn |
 
 ### Limpando items órfãos
 

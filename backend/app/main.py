@@ -13,31 +13,24 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from app.adapters.api.admin_router import router as admin_router  # noqa: E402
 from app.adapters.api.auth_router import router as auth_router  # noqa: E402
 from app.adapters.api.user_router import router as user_router  # noqa: E402
-from app.adapters.config.settings import settings  # noqa: E402
-from app.adapters.dynamo_access_level_repository import (  # noqa: E402
-    DynamoAccessLevelRepository,
+from app.adapters.api.well_known_router import (  # noqa: E402
+    router as well_known_router,
 )
+from app.adapters.config.settings import settings  # noqa: E402
 from app.adapters.dynamo_user_repository import DynamoUserRepository  # noqa: E402
 from app.application.user_service import UserService  # noqa: E402
+from app.domain.access_level import Role  # noqa: E402
 from app.domain.user import Email  # noqa: E402
-from app.ports.access_level_repository import AccessLevelRepository  # noqa: E402
 from app.ports.user_repository import UserRepository  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
-def _seed_root_admin(
-    user_repo: UserRepository, access_repo: AccessLevelRepository
-) -> None:
+def _seed_root_admin(user_repo: UserRepository) -> None:
     if user_repo.find_by_email(Email(settings.seed_admin_email)) is not None:
         return  # idempotente — já existe
 
-    admin_level = access_repo.find_by_title("admin")
-    user_level = access_repo.find_by_title("user")
-    if admin_level is None or user_level is None:
-        return  # catálogo não foi seedado pelo terraform; aborta silenciosamente
-
-    service = UserService(user_repo=user_repo, access_level_repo=access_repo)
+    service = UserService(user_repo=user_repo)
     user = service.register(
         first_name="Admin",
         last_name="Root",
@@ -46,7 +39,7 @@ def _seed_root_admin(
         password=settings.seed_admin_password,
     )
 
-    user.access_level = [user_level.id, admin_level.id]
+    user.change_role(Role.ADMIN)
     user_repo.save(user)
 
 
@@ -85,9 +78,6 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 user_repo=DynamoUserRepository(
                     table_name=settings.dynamodb_table_users
                 ),
-                access_repo=DynamoAccessLevelRepository(
-                    table_name=settings.dynamodb_table_access_levels
-                ),
             )
             logger.info(
                 "[lifespan] root admin garantido (%s)",
@@ -103,6 +93,7 @@ app = FastAPI(title="Auth Service", version="0.1.0", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(user_router)
 app.include_router(admin_router)
+app.include_router(well_known_router)
 
 
 @app.get("/health")

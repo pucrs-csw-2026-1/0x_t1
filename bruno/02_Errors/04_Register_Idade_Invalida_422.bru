@@ -1,0 +1,31 @@
+meta {
+  name: 04 Register idade invalida (422)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/users/register
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "first_name": "Idade",
+    "last_name": "Invalida",
+    "username": "idade.invalida",
+    "email": "idade.invalida@example.com",
+    "password": "Senha@123",
+    "age": 200
+  }
+}
+
+assert {
+  res.status: eq 422
+}
+
+docs {
+  US-26: age tem constraint 0 <= age <= 150 no schema (Pydantic).
+  Valor fora do intervalo e rejeitado com 422 antes de tocar o handler.
+}

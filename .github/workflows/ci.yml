@@ -78,7 +78,10 @@ jobs:
       - name: Executar testes com cobertura
         env:
           SECRET_KEY: test-secret-key-for-ci
-          ALGORITHM: HS256
+          # US-28: JWTs assinados em RS256. As chaves de dev versionadas
+          # (backend/keys/) são resolvidas pelos paths default das Settings
+          # (cwd = ./backend), sem env extra.
+          ALGORITHM: RS256
           ACCESS_TOKEN_EXPIRE_MINUTES: 30
           REFRESH_TOKEN_EXPIRE_DAYS: 7
           AWS_REGION: us-east-1

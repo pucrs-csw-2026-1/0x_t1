@@ -14,18 +14,24 @@ from typing import Any
 
 import pytest
 
+from app.domain.access_level import ROLE_SCOPES, Role, scopes_for
 from app.domain.exceptions import (
+    InvalidAgeError,
     InvalidEmailError,
     InvalidNameError,
+    InvalidProfileFieldError,
     InvalidUsernameError,
     WeakPasswordError,
 )
 from app.domain.user import (
     Email,
+    Gender,
     HashedPassword,
     User,
     Username,
+    validate_age,
     validate_name_field,
+    validate_profile_text,
     validate_raw_password,
 )
 
@@ -271,8 +277,8 @@ class TestUserCreation:
     def test_gera_updated_at_automaticamente(self, valid_user: User) -> None:
         assert isinstance(valid_user.updated_at, datetime)
 
-    def test_access_level_padrao_e_lista_vazia(self, valid_user: User) -> None:
-        assert valid_user.access_level == []
+    def test_access_level_padrao_e_participant(self, valid_user: User) -> None:
+        assert valid_user.access_level is Role.PARTICIPANT
 
     def test_is_active_padrao_e_true(self, valid_user: User) -> None:
         assert valid_user.is_active is True
@@ -352,3 +358,217 @@ class TestUserMutation:
         valid_user.change_email(Email("outro@example.com"))
         valid_user.deactivate()
         assert valid_user.created_at == created_original
+
+
+# ═══════════════════════════════════════════════════════════════════
+# US-26 — Campos demográficos
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestGender:
+    """Enum de gênero serializa pelo valor (str)."""
+
+    @pytest.mark.parametrize("valor", ["F", "M", "OUTRO", "NAO_INFORMADO"])
+    def test_aceita_valores_validos(self, valor: str) -> None:
+        assert Gender(valor).value == valor
+
+    def test_e_str(self) -> None:
+        # str na base permite comparar/serializar pelo valor
+        assert Gender.OUTRO == "OUTRO"
+
+    def test_rejeita_valor_invalido(self) -> None:
+        with pytest.raises(ValueError):
+            Gender("INVALIDO")
+
+
+class TestValidateAge:
+    """Valores-limite: -1 (rejeita), 0 (aceita), 150 (aceita), 151 (rejeita)."""
+
+    def test_none_e_aceito(self) -> None:
+        assert validate_age(None) is None
+
+    def test_idade_negativa_rejeita(self) -> None:
+        with pytest.raises(InvalidAgeError):
+            validate_age(-1)
+
+    def test_idade_0_aceita(self) -> None:
+        assert validate_age(0) == 0
+
+    def test_idade_150_aceita(self) -> None:
+        assert validate_age(150) == 150
+
+    def test_idade_151_rejeita(self) -> None:
+        with pytest.raises(InvalidAgeError):
+            validate_age(151)
+
+
+class TestValidateProfileText:
+    """Valores-limite: 0 (rejeita), 1 (aceita), 128 (aceita), 129 (rejeita)."""
+
+    def test_none_e_aceito(self) -> None:
+        assert validate_profile_text(None, "area") is None
+
+    def test_vazio_rejeita(self) -> None:
+        with pytest.raises(InvalidProfileFieldError):
+            validate_profile_text("", "area")
+
+    def test_so_espacos_rejeita(self) -> None:
+        with pytest.raises(InvalidProfileFieldError):
+            validate_profile_text("   ", "city")
+
+    def test_1_char_aceita(self) -> None:
+        assert validate_profile_text("A", "area") == "A"
+
+    def test_128_chars_aceita(self) -> None:
+        valor = "a" * 128
+        assert validate_profile_text(valor, "area") == valor
+
+    def test_129_chars_rejeita(self) -> None:
+        with pytest.raises(InvalidProfileFieldError):
+            validate_profile_text("a" * 129, "city")
+
+    def test_normaliza_com_strip(self) -> None:
+        assert validate_profile_text("  Porto Alegre  ", "city") == "Porto Alegre"
+
+    def test_mensagem_cita_o_campo(self) -> None:
+        with pytest.raises(InvalidProfileFieldError, match="area"):
+            validate_profile_text("", "area")
+
+
+class TestUserDemographics:
+    """Demografia opcional na entidade User (US-26)."""
+
+    def test_campos_demograficos_default_none(self, valid_user: User) -> None:
+        assert valid_user.age is None
+        assert valid_user.area is None
+        assert valid_user.gender is None
+        assert valid_user.city is None
+
+    def test_aceita_demografia_valida(self, valid_user_kwargs: dict[str, Any]) -> None:
+        user = User(
+            **valid_user_kwargs,
+            age=30,
+            area="Engenharia",
+            gender=Gender.OUTRO,
+            city="Porto Alegre",
+        )
+        assert user.age == 30
+        assert user.area == "Engenharia"
+        assert user.gender is Gender.OUTRO
+        assert user.city == "Porto Alegre"
+
+    def test_idade_invalida_na_construcao_rejeita(
+        self, valid_user_kwargs: dict[str, Any]
+    ) -> None:
+        with pytest.raises(InvalidAgeError):
+            User(**valid_user_kwargs, age=200)
+
+    def test_area_invalida_na_construcao_rejeita(
+        self, valid_user_kwargs: dict[str, Any]
+    ) -> None:
+        with pytest.raises(InvalidProfileFieldError):
+            User(**valid_user_kwargs, area="x" * 129)
+
+    def test_gender_string_e_coercido_para_enum(
+        self, valid_user_kwargs: dict[str, Any]
+    ) -> None:
+        # Leitura do repositório pode entregar string crua
+        user = User(**valid_user_kwargs, gender="F")
+        assert user.gender is Gender.F
+
+    def test_change_demographics_atualiza_apenas_informados(
+        self, valid_user: User
+    ) -> None:
+        valid_user.change_demographics(age=40, gender=Gender.M)
+        assert valid_user.age == 40
+        assert valid_user.gender is Gender.M
+        # campos não informados permanecem None
+        assert valid_user.area is None
+        assert valid_user.city is None
+
+    def test_change_demographics_none_preserva_valor(
+        self, valid_user_kwargs: dict[str, Any]
+    ) -> None:
+        user = User(**valid_user_kwargs, city="Porto Alegre")
+        user.change_demographics(age=25, city=None)
+        assert user.age == 25
+        # city=None significa "não alterar", não "limpar"
+        assert user.city == "Porto Alegre"
+
+    def test_change_demographics_valida(self, valid_user: User) -> None:
+        with pytest.raises(InvalidAgeError):
+            valid_user.change_demographics(age=-5)
+
+    def test_change_demographics_atualiza_updated_at(self, valid_user: User) -> None:
+        valid_user.updated_at = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        valid_user.change_demographics(age=33)
+        assert valid_user.updated_at > datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# US-27 — Papel (Role) e scopes cumulativos
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestRole:
+    """Enum de papel e derivação cumulativa de scopes."""
+
+    @pytest.mark.parametrize("valor", ["PARTICIPANT", "MANAGER", "ADMIN"])
+    def test_aceita_valores_validos(self, valor: str) -> None:
+        assert Role(valor).value == valor
+
+    def test_rejeita_valor_invalido(self) -> None:
+        with pytest.raises(ValueError):
+            Role("SUPERADMIN")
+
+    def test_scopes_participant_apenas_base(self) -> None:
+        assert scopes_for(Role.PARTICIPANT) == ["participant"]
+
+    def test_scopes_manager_cumulativo(self) -> None:
+        assert sorted(scopes_for(Role.MANAGER)) == ["manager", "participant"]
+
+    def test_scopes_admin_cumulativo_inclui_admin(self) -> None:
+        scopes = scopes_for(Role.ADMIN)
+        assert sorted(scopes) == ["admin", "manager", "participant"]
+        # gate de /admin/* compara 'admin' in scopes
+        assert "admin" in scopes
+
+    def test_hierarquia_e_cumulativa(self) -> None:
+        # cada papel superior contém os scopes do inferior
+        assert set(ROLE_SCOPES[Role.PARTICIPANT]) <= set(ROLE_SCOPES[Role.MANAGER])
+        assert set(ROLE_SCOPES[Role.MANAGER]) <= set(ROLE_SCOPES[Role.ADMIN])
+
+    def test_scopes_for_retorna_copia(self) -> None:
+        # mutar o retorno não deve afetar o mapa global
+        scopes = scopes_for(Role.ADMIN)
+        scopes.append("hacked")
+        assert "hacked" not in ROLE_SCOPES[Role.ADMIN]
+
+
+class TestUserRole:
+    """Papel na entidade User (US-27)."""
+
+    def test_default_e_participant(self, valid_user: User) -> None:
+        assert valid_user.access_level is Role.PARTICIPANT
+
+    def test_coage_string_para_role(self, valid_user_kwargs: dict[str, Any]) -> None:
+        # leitura do repositório entrega string crua
+        user = User(**valid_user_kwargs, access_level="ADMIN")
+        assert user.access_level is Role.ADMIN
+
+    def test_string_invalida_rejeita(self, valid_user_kwargs: dict[str, Any]) -> None:
+        with pytest.raises(ValueError):
+            User(**valid_user_kwargs, access_level="ROOT")
+
+    def test_change_role_altera_papel(self, valid_user: User) -> None:
+        valid_user.change_role(Role.MANAGER)
+        assert valid_user.access_level is Role.MANAGER
+
+    def test_change_role_aceita_string(self, valid_user: User) -> None:
+        valid_user.change_role("ADMIN")
+        assert valid_user.access_level is Role.ADMIN
+
+    def test_change_role_atualiza_updated_at(self, valid_user: User) -> None:
+        valid_user.updated_at = datetime(2000, 1, 1, tzinfo=timezone.utc)
+        valid_user.change_role(Role.ADMIN)
+        assert valid_user.updated_at > datetime(2000, 1, 1, tzinfo=timezone.utc)

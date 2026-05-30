@@ -1,4 +1,7 @@
 # app/adapters/config/settings.py
+from functools import lru_cache
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,10 +13,22 @@ class Settings(BaseSettings):
     )
 
     app_env: str = "development"
-    secret_key: str
-    algorithm: str = "HS256"
+    # secret_key permanece para compatibilidade de configuração, mas NÃO é mais
+    # usado: a assinatura dos JWTs migrou de HS256 (segredo compartilhado) para
+    # RS256 (par de chaves) na US-28.
+    secret_key: str | None = None
+    algorithm: str = "RS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
+
+    # RS256 (US-28): caminhos para o par de chaves. Em dev/CI aponta para o
+    # par versionado em backend/keys/ (dev-only). Em produção, sobrescreva via
+    # env apontando para chaves montadas de um cofre de segredos (ver US-23).
+    rsa_private_key_path: str = "keys/dev_private.pem"
+    rsa_public_key_path: str = "keys/dev_public.pem"
+    # Identificador da chave publicado no header dos tokens e no JWKS; os
+    # consumidores casam o `kid` do token com a chave do JWKS.
+    jwt_kid: str = "auth-dev-key"
 
     aws_region: str = "us-east-1"
     aws_endpoint_url: str | None = None
@@ -22,10 +37,30 @@ class Settings(BaseSettings):
 
     dynamodb_table_users: str = "user"
 
-    dynamodb_table_access_levels: str = "access_level"
-
     seed_admin_email: str = "admin@local.dev"
     seed_admin_password: str = "Admin@123"
 
+    # Clientes de serviço (OAuth2 client_credentials — US-28 parte 2).
+    #
+    # Multi-cliente: defina SERVICE_CLIENTS como um JSON, ex.:
+    #   [{"client_id": "metrics-service", "secret": "...", "scopes": ["metrics:read"]},
+    #    {"client_id": "reports-service", "secret": "...", "scopes": ["reports:read"]}]
+    # Quando vazio, cai no cliente único abaixo (default de dev). Em produção,
+    # sobrescreva via env / cofre de segredos (nunca commite secrets de prod).
+    service_clients: str | None = None
+    service_client_id: str = "metrics-service"
+    service_client_secret: str = "dev-metrics-secret"
+    service_client_scopes: str = "metrics:read"
 
-settings = Settings()  # type: ignore[call-arg]
+
+@lru_cache(maxsize=8)
+def read_key(path: str) -> str:
+    """Lê e cacheia o conteúdo PEM de uma chave a partir do caminho.
+
+    Cacheado por caminho para evitar I/O de disco a cada token (o
+    get_current_user instancia o provider por request).
+    """
+    return Path(path).read_text(encoding="utf-8")
+
+
+settings = Settings()

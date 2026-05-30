@@ -26,6 +26,11 @@ RUN pip install --no-cache-dir --upgrade pip \
 # Copia o código da aplicação.
 COPY app/ ./app/
 
-EXPOSE 8000
+# Par de chaves RS256 (dev-only) usado para assinar/validar os JWTs e servir
+# o JWKS. Em produção, monte chaves de um cofre de segredos e sobrescreva
+# RSA_PRIVATE_KEY_PATH / RSA_PUBLIC_KEY_PATH (ver backend/keys/README.md).
+COPY keys/ ./keys/
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8080
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

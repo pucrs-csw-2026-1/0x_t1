@@ -1,4 +1,5 @@
-from app.domain.user import Email, HashedPassword, User, Username
+from app.domain.access_level import Role
+from app.domain.user import Email, Gender, HashedPassword, User, Username
 from app.ports.user_repository import UserRepository
 
 
@@ -52,6 +53,58 @@ def test_round_trip_preserves_value_objects(
     assert found.email == valid_user.email
     assert found.username == valid_user.username
     assert found.hashed_password == valid_user.hashed_password
+
+
+def test_round_trip_preserves_demographics(repo: UserRepository) -> None:
+    """US-26: campos demográficos sobrevivem ao round-trip de persistência."""
+    user = User(
+        username=Username("demo.user"),
+        email=Email("demo@example.com"),
+        hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+        first_name="Demo",
+        last_name="User",
+        age=30,
+        area="Engenharia",
+        gender=Gender.OUTRO,
+        city="Porto Alegre",
+    )
+    repo.save(user)
+    found = repo.find_by_id(user.id)
+    assert found is not None
+    assert found.age == 30
+    assert isinstance(found.age, int)
+    assert found.area == "Engenharia"
+    assert found.gender is Gender.OUTRO
+    assert found.city == "Porto Alegre"
+
+
+def test_round_trip_demographics_ausentes_continuam_none(
+    repo: UserRepository, valid_user: User
+) -> None:
+    """US-26: usuário sem demografia round-trips com os campos em None."""
+    repo.save(valid_user)
+    found = repo.find_by_id(valid_user.id)
+    assert found is not None
+    assert found.age is None
+    assert found.area is None
+    assert found.gender is None
+    assert found.city is None
+
+
+def test_round_trip_preserves_role(repo: UserRepository) -> None:
+    """US-27: o papel (Role) sobrevive ao round-trip como enum."""
+    user = User(
+        username=Username("role.user"),
+        email=Email("role@example.com"),
+        hashed_password=HashedPassword("$2b$12$abcdefghijklmnopqrstuv"),
+        first_name="Role",
+        last_name="User",
+        access_level=Role.ADMIN,
+    )
+    repo.save(user)
+    found = repo.find_by_id(user.id)
+    assert found is not None
+    assert found.access_level is Role.ADMIN
 
 
 def test_save_overwrites_existing(repo: UserRepository, valid_user: User) -> None:

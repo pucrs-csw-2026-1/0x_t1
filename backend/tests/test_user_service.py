@@ -8,10 +8,10 @@ from app.adapters.in_memory_refresh_token_repository import (
     InMemoryRefreshTokenRepository,
 )
 from app.application.user_service import UserService
-from app.domain.access_level import AccessLevel
+from app.domain.access_level import Role
 from app.domain.exceptions import (
-    AccessLevelNotFoundError,
     EmailAlreadyExistsError,
+    InvalidAgeError,
     InvalidCredentialsError,
     InvalidEmailError,
     InvalidNameError,
@@ -22,10 +22,8 @@ from app.domain.exceptions import (
     UserNotFoundError,
     WeakPasswordError,
 )
-from app.domain.user import Email, HashedPassword, User, Username
+from app.domain.user import Email, Gender, HashedPassword, User, Username
 from app.ports.password_hasher import PasswordHasher
-from tests.conftest import USER_UUID
-from tests.fakes.access_level_repository import FakeAccessLevelRepository
 from tests.fakes.user_repository import FakeUserRepository
 
 
@@ -34,11 +32,9 @@ class TestUserService:
     def service(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> UserService:
         return UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
         )
 
     # CT-01 (particao - existente): get_user_by_id retorna o usuario correto
@@ -104,14 +100,12 @@ class TestUserServiceRegister:
     def test_register_calls_hasher_once_and_persists_with_user_role(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy: PasswordHasher = MagicMock(spec=PasswordHasher)
         spy.hash.return_value = "$2b$12$fakehash"
 
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
             password_hasher=spy,
         )
 
@@ -126,12 +120,64 @@ class TestUserServiceRegister:
         spy.hash.assert_called_once_with("S3nh@Forte!")
         assert not hasattr(user, "password")
         # US-13: usuario novo sempre cadastrado com perfil 'user'
-        assert user.access_level == [USER_UUID]
+        assert user.access_level is Role.PARTICIPANT
         # persistido no fake repo com a mesma access_level
         fetched = fake_repo.find_by_email(Email("joao@example.com"))
         assert fetched is not None
         assert fetched.id == user.id
-        assert fetched.access_level == [USER_UUID]
+        assert fetched.access_level is Role.PARTICIPANT
+
+    # US-26: register com demografia persiste os 4 campos
+    def test_register_com_demografia_persiste_os_campos(
+        self,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        service = UserService(
+            user_repo=fake_repo,
+        )
+
+        user = service.register(
+            first_name="Ana",
+            last_name="Souza",
+            username="ana.souza",
+            email="ana@example.com",
+            password="S3nh@Forte!",
+            age=28,
+            area="Saúde",
+            gender=Gender.F,
+            city="Curitiba",
+        )
+
+        assert user.age == 28
+        assert user.area == "Saúde"
+        assert user.gender is Gender.F
+        assert user.city == "Curitiba"
+        fetched = fake_repo.find_by_id(user.id)
+        assert fetched is not None
+        assert fetched.age == 28
+        assert fetched.gender is Gender.F
+
+    # US-26: register sem demografia mantem os campos None
+    def test_register_sem_demografia_mantem_none(
+        self,
+        fake_repo: FakeUserRepository,
+    ) -> None:
+        service = UserService(
+            user_repo=fake_repo,
+        )
+
+        user = service.register(
+            first_name="Ana",
+            last_name="Souza",
+            username="ana.souza",
+            email="ana@example.com",
+            password="S3nh@Forte!",
+        )
+
+        assert user.age is None
+        assert user.area is None
+        assert user.gender is None
+        assert user.city is None
 
     # US-13 - particao 1: register sem campo access_level no payload eh aceito
     # (ja coberto pelo teste acima, que nao passa o parametro).
@@ -140,7 +186,6 @@ class TestUserServiceRegister:
     # no catalogo de access_level
     def test_register_with_duplicate_email_raises(
         self,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         class StubRepo(FakeUserRepository):
             def __init__(self, existing_user: User) -> None:
@@ -161,7 +206,6 @@ class TestUserServiceRegister:
         stub = StubRepo(existing)
         service = UserService(
             user_repo=stub,
-            access_level_repo=fake_access_level_repo,
             password_hasher=MagicMock(spec=PasswordHasher),
         )
 
@@ -178,11 +222,9 @@ class TestUserServiceRegister:
     def test_register_invalid_email_raises(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
             password_hasher=MagicMock(spec=PasswordHasher),
         )
 
@@ -199,11 +241,9 @@ class TestUserServiceRegister:
     def test_register_weak_password_raises(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
             password_hasher=MagicMock(spec=PasswordHasher),
         )
 
@@ -220,13 +260,11 @@ class TestUserServiceRegister:
     def test_state_transition(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy: PasswordHasher = MagicMock(spec=PasswordHasher)
         spy.hash.return_value = "$2b$12$fakehash"
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
             password_hasher=spy,
         )
 
@@ -259,13 +297,11 @@ class TestUserServiceDeactivate:
     def test_deactivate_marks_inactive(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
         valid_user: User,
     ) -> None:
         fake_repo.save(valid_user)
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
         )
 
         deactivated = service.deactivate(valid_user.id)
@@ -280,14 +316,12 @@ class TestUserServiceDeactivate:
     def test_deactivate_updates_updated_at(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
         valid_user: User,
     ) -> None:
         original_updated_at = valid_user.updated_at
         fake_repo.save(valid_user)
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
         )
 
         deactivated = service.deactivate(valid_user.id)
@@ -298,13 +332,11 @@ class TestUserServiceDeactivate:
     def test_deactivate_preserves_record(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
         valid_user: User,
     ) -> None:
         fake_repo.save(valid_user)
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
         )
 
         service.deactivate(valid_user.id)
@@ -320,13 +352,11 @@ class TestUserServiceDeactivate:
     def test_deactivate_is_idempotent(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
         valid_user: User,
     ) -> None:
         fake_repo.save(valid_user)
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
         )
 
         result1 = service.deactivate(valid_user.id)
@@ -339,7 +369,6 @@ class TestUserServiceDeactivate:
     def test_deactivate_revokes_all_refresh_tokens(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
         valid_user: User,
     ) -> None:
         fake_repo.save(valid_user)
@@ -351,7 +380,6 @@ class TestUserServiceDeactivate:
 
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
             refresh_token_repo=refresh_repo,
         )
 
@@ -365,11 +393,9 @@ class TestUserServiceDeactivate:
     def test_deactivate_user_not_found_raises(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
         )
 
         with pytest.raises(UserNotFoundError):
@@ -379,13 +405,11 @@ class TestUserServiceDeactivate:
     def test_deactivate_state_transition(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
         valid_user: User,
     ) -> None:
         fake_repo.save(valid_user)
         service = UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
         )
 
         # Inicialmente ativo
@@ -400,49 +424,15 @@ class TestUserServiceDeactivate:
         assert fetched is not None
         assert fetched.is_active is False
 
-    # US-13 CA: catalogo sem o perfil 'user' lanca AccessLevelNotFoundError
-    # (sinaliza Terraform fora de sincronia, em vez de fallback silencioso).
-    def test_register_sem_catalogo_user_levanta_excecao(
+    # US-27 CA (segurança): cadastro público sempre cria PARTICIPANT.
+    # Não há mais catálogo nem 500 de "catálogo não provisionado".
+    def test_register_sempre_cria_participant(
         self,
         fake_repo: FakeUserRepository,
     ) -> None:
-        empty_catalog = FakeAccessLevelRepository(levels=[])
-        service = UserService(
-            user_repo=fake_repo,
-            access_level_repo=empty_catalog,
-            password_hasher=MagicMock(spec=PasswordHasher),
-        )
-
-        with pytest.raises(AccessLevelNotFoundError):
-            service.register(
-                first_name="Joao",
-                last_name="Silva",
-                username="joao.silva",
-                email="joao@example.com",
-                password="S3nh@Forte!",
-            )
-
-    # US-13 CA: register sempre atribui o UUID do 'user', mesmo com catalogo
-    # contendo 'admin' como primeiro item (ordem do catalogo nao influencia).
-    def test_register_busca_titulo_user_e_nao_o_primeiro_do_catalogo(
-        self,
-        fake_repo: FakeUserRepository,
-    ) -> None:
-        # admin antes de user proposito de garantir que find_by_title eh
-        # chamado, nao um "pega o primeiro"
-        catalog = FakeAccessLevelRepository(
-            levels=[
-                AccessLevel(id="uuid-admin-fake", title="admin"),
-                AccessLevel(id="uuid-user-fake", title="user"),
-            ]
-        )
         spy: PasswordHasher = MagicMock(spec=PasswordHasher)
         spy.hash.return_value = "$2b$12$fakehash"
-        service = UserService(
-            user_repo=fake_repo,
-            access_level_repo=catalog,
-            password_hasher=spy,
-        )
+        service = UserService(user_repo=fake_repo, password_hasher=spy)
 
         user = service.register(
             first_name="Joao",
@@ -452,7 +442,7 @@ class TestUserServiceDeactivate:
             password="S3nh@Forte!",
         )
 
-        assert user.access_level == ["uuid-user-fake"]
+        assert user.access_level is Role.PARTICIPANT
 
 
 class TestUserServiceListUsers:
@@ -462,11 +452,9 @@ class TestUserServiceListUsers:
     def service(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> UserService:
         return UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
         )
 
     @staticmethod
@@ -586,11 +574,9 @@ class TestUserServiceUpdateProfile:
     def service(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> UserService:
         return UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
         )
 
     @pytest.fixture
@@ -791,6 +777,33 @@ class TestUserServiceUpdateProfile:
         assert fetched is not None
         assert fetched.first_name == "Persistida"
 
+    # US-26: atualização de demografia altera só os campos informados
+    def test_update_profile_atualiza_demografia(
+        self,
+        service: UserService,
+        fake_repo: FakeUserRepository,
+        saved_user: User,
+    ) -> None:
+        result = service.update_profile(saved_user.id, age=45, city="Florianópolis")
+
+        assert result.age == 45
+        assert result.city == "Florianópolis"
+        # campos não informados não são tocados
+        assert result.area is None
+        assert result.gender is None
+        fetched = fake_repo.find_by_id(saved_user.id)
+        assert fetched is not None
+        assert fetched.age == 45
+
+    # US-26: demografia inválida no update lança exceção de domínio
+    def test_update_profile_demografia_invalida_lanca_excecao(
+        self,
+        service: UserService,
+        saved_user: User,
+    ) -> None:
+        with pytest.raises(InvalidAgeError):
+            service.update_profile(saved_user.id, age=999)
+
 
 class TestUserServiceChangePassword:
     """Testes de UserService.change_password (US-16)."""
@@ -809,12 +822,10 @@ class TestUserServiceChangePassword:
     def _make_service(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
         spy: PasswordHasher,
     ) -> UserService:
         return UserService(
             user_repo=fake_repo,
-            access_level_repo=fake_access_level_repo,
             password_hasher=spy,
         )
 
@@ -832,10 +843,9 @@ class TestUserServiceChangePassword:
     def test_senha_atual_correta_e_nova_valida_retorna_usuario(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy = self._make_spy([True, False])
-        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        service = self._make_service(fake_repo, spy)
         user = self._saved_user(fake_repo)
 
         result = service.change_password(user.id, self.CURRENT_PLAIN, self.NEW_PLAIN)
@@ -846,10 +856,9 @@ class TestUserServiceChangePassword:
     def test_hash_chamado_exatamente_uma_vez(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy = self._make_spy([True, False])
-        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        service = self._make_service(fake_repo, spy)
         user = self._saved_user(fake_repo)
 
         service.change_password(user.id, self.CURRENT_PLAIN, self.NEW_PLAIN)
@@ -860,10 +869,9 @@ class TestUserServiceChangePassword:
     def test_updated_at_e_atualizado(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy = self._make_spy([True, False])
-        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        service = self._make_service(fake_repo, spy)
         user = self._saved_user(fake_repo)
         original_updated_at = user.updated_at
 
@@ -875,10 +883,9 @@ class TestUserServiceChangePassword:
     def test_senha_atual_incorreta_lanca_excecao(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy = self._make_spy([False])
-        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        service = self._make_service(fake_repo, spy)
         user = self._saved_user(fake_repo)
 
         with pytest.raises(InvalidCredentialsError):
@@ -888,10 +895,9 @@ class TestUserServiceChangePassword:
     def test_nova_senha_igual_a_atual_lanca_excecao(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy = self._make_spy([True, True])
-        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        service = self._make_service(fake_repo, spy)
         user = self._saved_user(fake_repo)
 
         with pytest.raises(SamePasswordError):
@@ -901,10 +907,9 @@ class TestUserServiceChangePassword:
     def test_nova_senha_fraca_lanca_excecao(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy = self._make_spy([True, False])
-        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        service = self._make_service(fake_repo, spy)
         user = self._saved_user(fake_repo)
 
         with pytest.raises(WeakPasswordError):
@@ -914,10 +919,9 @@ class TestUserServiceChangePassword:
     def test_usuario_inexistente_lanca_excecao(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy = self._make_spy([True, False])
-        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        service = self._make_service(fake_repo, spy)
 
         with pytest.raises(UserNotFoundError):
             service.change_password(
@@ -928,10 +932,9 @@ class TestUserServiceChangePassword:
     def test_hash_nao_chamado_se_senha_atual_incorreta(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy = self._make_spy([False])
-        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        service = self._make_service(fake_repo, spy)
         user = self._saved_user(fake_repo)
 
         with pytest.raises(InvalidCredentialsError):
@@ -943,10 +946,9 @@ class TestUserServiceChangePassword:
     def test_nova_senha_persiste_no_repositorio(
         self,
         fake_repo: FakeUserRepository,
-        fake_access_level_repo: FakeAccessLevelRepository,
     ) -> None:
         spy = self._make_spy([True, False])
-        service = self._make_service(fake_repo, fake_access_level_repo, spy)
+        service = self._make_service(fake_repo, spy)
         user = self._saved_user(fake_repo)
 
         service.change_password(user.id, self.CURRENT_PLAIN, self.NEW_PLAIN)

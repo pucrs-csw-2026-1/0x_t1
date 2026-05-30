@@ -13,10 +13,9 @@ from jose import jwt
 
 from app.adapters.api.dependencies import get_current_user, get_user_service
 from app.adapters.api.user_router import router
-from app.adapters.config.settings import Settings, settings
+from app.adapters.config.settings import read_key, settings
 from app.adapters.jwt_token_provider import JwtTokenProvider
 from app.application.user_service import UserService
-from app.domain.access_level import AccessLevel
 from app.domain.exceptions import (
     EmailAlreadyExistsError,
     InvalidCredentialsError,
@@ -28,10 +27,11 @@ from app.domain.exceptions import (
     UserNotFoundError,
     WeakPasswordError,
 )
-from app.domain.user import User
-from tests.conftest import ADMIN_UUID, USER_UUID
-from tests.fakes.access_level_repository import FakeAccessLevelRepository
+from app.domain.user import Gender, User
 from tests.fakes.user_repository import FakeUserRepository
+
+# Chave privada de dev para forjar tokens nos testes de proteção (assinatura RS256).
+PRIVATE_KEY = read_key("keys/dev_private.pem")
 
 
 @pytest.fixture
@@ -258,11 +258,11 @@ class TestUserRouterRegister:
 
 
 class TestUserRouterRegisterAccessLevelDiscard:
-    """US-13: register publico nunca concede perfis elevados.
+    """US-27: register publico nunca concede papel elevado.
 
-    Critério de aceite: tentativa de auto-promocao via access_level no body
-    deve ser silenciosamente descartada e o usuario criado sempre com 'user'.
-    Cobre as 3 particoes: sem campo, lista vazia, payload com 'admin'.
+    Critério de aceite (segurança): tentativa de auto-promoção via
+    access_level no body é silenciosamente ignorada e o usuário é sempre
+    criado como PARTICIPANT.
     """
 
     def _post_register(
@@ -271,19 +271,9 @@ class TestUserRouterRegisterAccessLevelDiscard:
         client: TestClient,
         body: dict[str, object],
     ) -> tuple[int, dict[str, object]]:
-        """Roda POST /users/register usando UserService real com fakes,
+        """Roda POST /users/register usando UserService real com fake repo,
         para que access_level do response reflita o que o service decidiu."""
-        fake_user_repo = FakeUserRepository()
-        fake_access_level_repo = FakeAccessLevelRepository(
-            levels=[
-                AccessLevel(id=ADMIN_UUID, title="admin"),
-                AccessLevel(id=USER_UUID, title="user"),
-            ]
-        )
-        service = UserService(
-            user_repo=fake_user_repo,
-            access_level_repo=fake_access_level_repo,
-        )
+        service = UserService(user_repo=FakeUserRepository())
 
         app.dependency_overrides[get_user_service] = lambda: service
 
@@ -292,12 +282,12 @@ class TestUserRouterRegisterAccessLevelDiscard:
         app.dependency_overrides.clear()
         return response.status_code, response.json()
 
-    def test_register_sem_access_level_cria_como_user(
+    def test_register_sem_access_level_cria_como_participant(
         self,
         app: FastAPI,
         client: TestClient,
     ) -> None:
-        """CT-13.4-01: payload sem access_level cria com perfil 'user'."""
+        """CT-27.R01: payload sem access_level cria como PARTICIPANT."""
         status_code, body = self._post_register(
             app,
             client,
@@ -311,37 +301,16 @@ class TestUserRouterRegisterAccessLevelDiscard:
         )
 
         assert status_code == 201
-        assert body["access_level"] == [USER_UUID]
-
-    def test_register_com_access_level_vazio_cria_como_user(
-        self,
-        app: FastAPI,
-        client: TestClient,
-    ) -> None:
-        """CT-13.4-02: payload com access_level=[] cria com perfil 'user'."""
-        status_code, body = self._post_register(
-            app,
-            client,
-            {
-                "first_name": "Joao",
-                "last_name": "Silva",
-                "username": "joao.silva",
-                "email": "joao@example.com",
-                "password": "S3nh@Forte!",
-                "access_level": [],
-            },
-        )
-
-        assert status_code == 201
-        assert body["access_level"] == [USER_UUID]
+        assert body["access_level"] == "PARTICIPANT"
 
     def test_register_com_admin_no_payload_eh_silenciosamente_descartado(
         self,
         app: FastAPI,
         client: TestClient,
     ) -> None:
-        """CT-13.4-03: payload com access_level=[ADMIN_UUID] (auto-promocao)
-        eh aceito sem 422 mas o usuario eh criado como 'user'."""
+        """CT-27.R02 (BLOQUEANTE): tentativa de auto-promoção — payload com
+        access_level='ADMIN' é aceito sem erro mas o usuário é criado como
+        PARTICIPANT. O campo nem existe em UserCreate, então é ignorado."""
         status_code, body = self._post_register(
             app,
             client,
@@ -351,13 +320,12 @@ class TestUserRouterRegisterAccessLevelDiscard:
                 "username": "joao.silva",
                 "email": "joao@example.com",
                 "password": "S3nh@Forte!",
-                "access_level": [ADMIN_UUID],
+                "access_level": "ADMIN",
             },
         )
 
         assert status_code == 201
-        assert body["access_level"] == [USER_UUID]
-        assert ADMIN_UUID not in body["access_level"]
+        assert body["access_level"] == "PARTICIPANT"
 
 
 class TestUserRouterAuthProtection:
@@ -403,9 +371,7 @@ class TestUserRouterAuthProtection:
             "scopes": ["user"],
             "exp": datetime.now(timezone.utc) - timedelta(hours=1),
         }
-        token = jwt.encode(
-            expired_payload, settings.secret_key, algorithm=settings.algorithm
-        )
+        token = jwt.encode(expired_payload, PRIVATE_KEY, algorithm="RS256")
 
         response = client.get(
             "/users/me",
@@ -420,14 +386,14 @@ class TestUserRouterAuthProtection:
         self,
         client: TestClient,
     ) -> None:
-        """CT-05: token assinado com chave diferente retorna 401."""
-        outra_chave = "chave-de-atacante-diferente-do-servidor"
+        """CT-05: token com assinatura adulterada retorna 401."""
         payload: dict[str, Any] = {
             "sub": "user-123",
-            "scopes": ["user"],
+            "scopes": ["participant"],
             "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
         }
-        token = jwt.encode(payload, outra_chave, algorithm=settings.algorithm)
+        valido = jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
+        token = valido.rsplit(".", 1)[0] + ".assinatura_adulterada"
 
         response = client.get(
             "/users/me",
@@ -444,10 +410,10 @@ class TestUserRouterAuthProtection:
     ) -> None:
         """CT-06: token bem assinado mas sem claim 'sub' retorna 401."""
         payload: dict[str, Any] = {
-            "scopes": ["user"],
+            "scopes": ["participant"],
             "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
         }
-        token = jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+        token = jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
 
         response = client.get(
             "/users/me",
@@ -473,15 +439,13 @@ class TestUserRouterAuthProtection:
         self,
         client: TestClient,
     ) -> None:
-        """CT-08: token assinado com algoritmo diferente do esperado retorna 401."""
-        outras_settings = Settings(  # type: ignore[call-arg]
-            secret_key=settings.secret_key,
-            algorithm="HS512",
-            access_token_expire_minutes=30,
-            refresh_token_expire_days=7,
-        )
-        outro_provider = JwtTokenProvider(outras_settings)
-        token = outro_provider.generate_access_token("user-123", scopes=["user"])
+        """CT-08: token HS256 (segredo simétrico) é rejeitado — só RS256 vale."""
+        payload: dict[str, Any] = {
+            "sub": "user-123",
+            "scopes": ["participant"],
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=30),
+        }
+        token = jwt.encode(payload, "segredo-hs256-atacante", algorithm="HS256")
 
         response = client.get(
             "/users/me",
@@ -626,6 +590,10 @@ class TestUserRouterUpdateProfile:
             last_name=None,
             email=None,
             username=None,
+            age=None,
+            area=None,
+            gender=None,
+            city=None,
         )
 
     # CT-15.R02 (CA-07): sem token retorna 401
@@ -815,6 +783,10 @@ class TestUserRouterUpdateProfile:
             last_name=None,
             email=None,
             username=None,
+            age=None,
+            area=None,
+            gender=None,
+            city=None,
         )
 
     # CT-15.R11: usuário não encontrado retorna 404
@@ -845,17 +817,8 @@ class TestUserRouterUpdateProfile:
         valid_user: User,
     ) -> None:
         fake_user_repo = FakeUserRepository()
-        fake_access_level_repo = FakeAccessLevelRepository(
-            levels=[
-                AccessLevel(id=ADMIN_UUID, title="admin"),
-                AccessLevel(id=USER_UUID, title="user"),
-            ]
-        )
         fake_user_repo.save(valid_user)
-        service = UserService(
-            user_repo=fake_user_repo,
-            access_level_repo=fake_access_level_repo,
-        )
+        service = UserService(user_repo=fake_user_repo)
 
         app.dependency_overrides[get_current_user] = lambda: valid_user.id
         app.dependency_overrides[get_user_service] = lambda: service
@@ -999,3 +962,179 @@ class TestUserRouterChangePassword:
         app.dependency_overrides.clear()
 
         assert response.status_code == 404
+
+
+class TestUserRouterDemographics:
+    """US-26: campos demográficos no cadastro, perfil e atualização."""
+
+    def _post_register(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        body: dict[str, object],
+    ) -> tuple[int, dict[str, Any]]:
+        """POST /users/register com UserService real + fake repo, para que o
+        response reflita os campos efetivamente persistidos."""
+        service = UserService(user_repo=FakeUserRepository())
+        app.dependency_overrides[get_user_service] = lambda: service
+        response = client.post("/users/register", json=body)
+        app.dependency_overrides.clear()
+        return response.status_code, response.json()
+
+    _BASE = {
+        "first_name": "Ana",
+        "last_name": "Souza",
+        "username": "ana.souza",
+        "email": "ana@example.com",
+        "password": "S3nh@Forte!",
+    }
+
+    # CT-26.R01: register com demografia retorna os campos no response
+    def test_register_com_demografia_retorna_campos(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        status_code, body = self._post_register(
+            app,
+            client,
+            {
+                **self._BASE,
+                "age": 28,
+                "area": "Saúde",
+                "gender": "F",
+                "city": "Curitiba",
+            },
+        )
+
+        assert status_code == 201
+        assert body["age"] == 28
+        assert body["area"] == "Saúde"
+        assert body["gender"] == "F"
+        assert body["city"] == "Curitiba"
+
+    # CT-26.R02: register sem demografia retorna os campos como null
+    def test_register_sem_demografia_retorna_null(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        status_code, body = self._post_register(app, client, dict(self._BASE))
+
+        assert status_code == 201
+        assert body["age"] is None
+        assert body["area"] is None
+        assert body["gender"] is None
+        assert body["city"] is None
+
+    # CT-26.R03 (valor-limite): idade fora de 0–150 retorna 422 (Pydantic)
+    @pytest.mark.parametrize("age", [-1, 151])
+    def test_register_idade_fora_do_intervalo_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        age: int,
+    ) -> None:
+        status_code, _ = self._post_register(app, client, {**self._BASE, "age": age})
+
+        assert status_code == 422
+
+    # CT-26.R04: gênero fora do enum retorna 422 (Pydantic)
+    def test_register_genero_invalido_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        status_code, _ = self._post_register(
+            app, client, {**self._BASE, "gender": "MASCULINO"}
+        )
+
+        assert status_code == 422
+
+    # CT-26.R05: area acima de 128 chars retorna 422 (Pydantic)
+    def test_register_area_longa_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+    ) -> None:
+        status_code, _ = self._post_register(
+            app, client, {**self._BASE, "area": "x" * 129}
+        )
+
+        assert status_code == 422
+
+    # CT-26.R06: GET /me expõe os campos demográficos
+    def test_get_me_retorna_demografia(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        valid_user.age = 30
+        valid_user.area = "Engenharia"
+        valid_user.gender = Gender.OUTRO
+        valid_user.city = "Porto Alegre"
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.get_user_by_id.return_value = valid_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.get("/users/me")
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["age"] == 30
+        assert data["area"] == "Engenharia"
+        assert data["gender"] == "OUTRO"
+        assert data["city"] == "Porto Alegre"
+
+    # CT-26.R07: PATCH /me repassa demografia ao service
+    def test_patch_me_demografia_e_repassada_ao_service(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+        user_service_mock.update_profile.return_value = valid_user
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"age": 40, "city": "Recife"})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        user_service_mock.update_profile.assert_called_once_with(
+            user_id=valid_user.id,
+            first_name=None,
+            last_name=None,
+            email=None,
+            username=None,
+            age=40,
+            area=None,
+            gender=None,
+            city="Recife",
+        )
+
+    # CT-26.R08 (valor-limite): PATCH com idade inválida retorna 422 (Pydantic)
+    def test_patch_me_idade_invalida_retorna_422(
+        self,
+        app: FastAPI,
+        client: TestClient,
+        valid_user: User,
+    ) -> None:
+        user_service_mock = create_autospec(UserService, instance=True)
+
+        app.dependency_overrides[get_current_user] = lambda: valid_user.id
+        app.dependency_overrides[get_user_service] = lambda: user_service_mock
+
+        response = client.patch("/users/me", json={"age": 200})
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 422

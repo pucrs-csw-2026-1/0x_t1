@@ -82,7 +82,7 @@ Como o DynamoDB não impõe regras de esquema, toda a validação é responsabil
 - Formato válido de e-mail e tamanhos mínimos/máximos de campos de texto;
 - Senha com mínimo de 8 caracteres, contendo letras maiúsculas, minúsculas, números e caracteres especiais (validada antes do hash);
 - Obrigatoriedade dos campos marcados como não nulos na modelagem;
-- Integridade referencial entre `user.access_level` e a tabela `access_level`.
+- Validade do papel `user.access_level` contra o enum `Role` (PARTICIPANT/MANAGER/ADMIN).
 
 ### Remoção lógica
 
@@ -95,7 +95,6 @@ Os registros da tabela `user` não são removidos fisicamente do banco. Em vez d
 | Tabela | Partition Key | Descrição |
 | --- | --- | --- |
 | `user` | `id` (UUID) | Armazena usuários cadastrados no sistema |
-| `access_level` | `id` (UUID) | Define os níveis de acesso disponíveis no sistema |
 
 ### Dicionário de Dados
 
@@ -112,19 +111,11 @@ Os registros da tabela `user` não são removidos fisicamente do banco. Em vez d
 | `is_active` | Boolean | Verificador de usuário ativo para remoção lógica | `true` |
 | `created_at` | String (date-time) | timestamp do momento de cadastro do usuário | `2001-09-11T12:30:00Z` |
 | `updated_at` | String (date-time) | timestamp da última atualização do cadastro do usuário | `2026-04-11T14:30:00Z` |
-| `access_level` | Lista [String (UUID)] | Lista de `access_level` com as UUID de autorização do usuário | `["uuid_0", "uuid_1"]` |
+| `access_level` | String (enum) | Papel único do usuário: `PARTICIPANT`, `MANAGER` ou `ADMIN` | `"PARTICIPANT"` |
 
-#### access_level
+### Papel de acesso (`access_level`)
 
-| Atributo | Tipo | Descrição | Exemplo |
-| --- | --- | --- | --- |
-| `id` | String (UUID) | Atributo de identificação do nível de acesso | `"c32d8b45-92fe-44f6-8b61-42c2107dfe87"` |
-| `title` | String | Nome simplificado do tipo de acesso | `"admin"` |
-
-### Relações
-
-| Origem | Destino | Cardinalidade | Campo | Tipo |
-| --- | --- | --- | --- | --- |
-| `user` | `access_level` | N:N | `user.access_level` | FK lógica (lista de UUIDs) |
-
-A integridade referencial é garantida pelo backend em **FastAPI**, já que o DynamoDB não suporta chaves estrangeiras nativas. Antes de persistir um `user`, o serviço valida que todos os UUIDs em `access_level` existem na tabela `access_level`.
+O papel é um **enum no código** (`Role`), não um registro de banco. Os scopes
+do JWT são derivados do papel de forma **cumulativa** (ADMIN ⊇ MANAGER ⊇
+PARTICIPANT). Não há tabela de catálogo nem integridade referencial a manter —
+a validade do valor é garantida pelo backend (Pydantic + domínio).

@@ -224,3 +224,6 @@ crash.*.log
 .ai_log/log_prompts.sh
 .github/hooks/hooks.json
 .claude/settings.json
+
+# Docs locais dos microserviços (referência; não versionar)
+microservice/
