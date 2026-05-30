@@ -16,7 +16,7 @@ auth:bearer {
 
 body:json {
   {
-    "access_level": ["{{user_uuid}}", "{{admin_uuid}}"]
+    "access_level": "ADMIN"
   }
 }
 
@@ -26,16 +26,15 @@ assert {
 }
 
 tests {
-  test("US-18: promocao adiciona admin sem perder user", function() {
-    expect(res.body.access_level).to.include(bru.getVar("admin_uuid"));
-    expect(res.body.access_level).to.include(bru.getVar("user_uuid"));
+  test("US-27: promocao define o papel ADMIN", function() {
+    expect(res.body.access_level).to.equal("ADMIN");
   });
 }
 
 docs {
-  Capitulo 4 - US-18 admin promove demo_user a admin via PATCH.
-  Note que o JWT atual de demo (demo_access_token) AINDA tem
-  scopes=["user"] - escopos so sao re-emitidos em logins novos
+  Capitulo 4 - US-18 admin promove demo_user a ADMIN via PATCH.
+  Note que o JWT atual de demo (demo_access_token) AINDA tem apenas
+  scopes=["participant"] - escopos so sao re-emitidos em logins novos
   pos-promocao. Por isso o request 15 ja capturou o 403 antes
   desta promocao.
 }
