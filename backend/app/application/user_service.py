@@ -1,6 +1,6 @@
 from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
+from app.domain.access_level import Role
 from app.domain.exceptions import (
-    AccessLevelNotFoundError,
     EmailAlreadyExistsError,
     InvalidCredentialsError,
     InvalidPaginationError,
@@ -16,7 +16,6 @@ from app.domain.user import (
     Username,
     validate_raw_password,
 )
-from app.ports.access_level_repository import AccessLevelRepository
 from app.ports.password_hasher import PasswordHasher
 from app.ports.refresh_token_repository import RefreshTokenRepository
 from app.ports.user_repository import UserPage, UserRepository
@@ -26,12 +25,10 @@ class UserService:
     def __init__(
         self,
         user_repo: UserRepository,
-        access_level_repo: AccessLevelRepository,
         password_hasher: PasswordHasher | None = None,
         refresh_token_repo: RefreshTokenRepository | None = None,
     ) -> None:
         self._user_repo = user_repo
-        self._access_level_repo = access_level_repo
         self._hasher: PasswordHasher = password_hasher or BcryptPasswordHasher()
         self._refresh_token_repo = refresh_token_repo
 
@@ -72,10 +69,11 @@ class UserService:
         """Registra um novo usuário validando dados, hasheando a senha e persistindo.
 
         Os campos demográficos (age, area, gender, city) são opcionais.
+        Cadastro público sempre cria o usuário com papel PARTICIPANT — o
+        papel nunca vem do cliente (anti-promoção por construção).
 
         Raises:
             EmailAlreadyExistsError: se já existir usuário com o mesmo e-mail.
-            AccessLevelNotFoundError: se o nível de acesso não for encontrado.
             InvalidEmailError, WeakPasswordError, InvalidUsernameError,
             InvalidAgeError, InvalidProfileFieldError: propagadas do domínio.
         """
@@ -95,12 +93,8 @@ class UserService:
         hashed = self._hasher.hash(password)
         hashed_vo = HashedPassword(hashed)
 
-        # Busca IDs de níveis de acesso
-        level = self._access_level_repo.find_by_title("user")
-        if not level:
-            raise AccessLevelNotFoundError("user")
-
-        # Cria entidade e persiste
+        # Cria entidade e persiste. Papel fixo PARTICIPANT: o cadastro público
+        # nunca aceita papel vindo do cliente.
         user = User(
             username=username_vo,
             email=email_vo,
@@ -111,7 +105,7 @@ class UserService:
             area=area,
             gender=gender,
             city=city,
-            access_level=[level.id],
+            access_level=Role.PARTICIPANT,
         )
 
         saved = self._user_repo.save(user)
@@ -201,15 +195,14 @@ class UserService:
         self,
         admin_id: str,
         target_user_id: str,
-        access_level: list[str] | None = None,
+        access_level: Role | None = None,
         is_active: bool | None = None,
     ) -> User:
-        """Atualiza access_level e/ou is_active de um usuário como admin.
+        """Atualiza o papel (access_level) e/ou is_active de um usuário como admin.
 
         Raises:
             ValueError: se admin_id == target_user_id.
             UserNotFoundError: se o usuário alvo não for encontrado.
-            AccessLevelNotFoundError: se algum UUID de access_level for inválido.
         """
         if admin_id == target_user_id:
             raise ValueError("Admin não pode alterar a si mesmo.")
@@ -217,11 +210,7 @@ class UserService:
         user = self.get_user_by_id(target_user_id)
 
         if access_level is not None:
-            for level_id in access_level:
-                if self._access_level_repo.find_by_id(level_id) is None:
-                    raise AccessLevelNotFoundError(level_id)
-            user.access_level = access_level
-            user._touch()
+            user.change_role(access_level)
 
         if is_active is not None:
             if is_active:

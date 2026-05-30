@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from app.domain.access_level import scopes_for
 from app.domain.exceptions import (
     InvalidCredentialsError,
     InvalidEmailError,
     TokenRevokedError,
 )
 from app.domain.user import Email
-from app.ports.access_level_repository import AccessLevelRepository
 from app.ports.password_hasher import PasswordHasher
 from app.ports.refresh_token_repository import RefreshTokenRepository
 from app.ports.token_provider import TokenProvider
@@ -21,14 +21,12 @@ class AuthService:
         user_repository: UserRepository,
         password_hasher: PasswordHasher,
         token_provider: TokenProvider,
-        access_level_repo: AccessLevelRepository,
         refresh_repository: RefreshTokenRepository | None = None,
     ) -> None:
         self._user_repository = user_repository
         self._password_hasher = password_hasher
         self._token_provider = token_provider
         self._refresh_repository = refresh_repository
-        self._access_level_repo = access_level_repo
 
     def login(self, email: str, password: str) -> dict[str, str]:
         """Autentica usuário com email e senha.
@@ -56,11 +54,7 @@ class AuthService:
         if not self._password_hasher.verify(password, user.hashed_password.value):
             raise InvalidCredentialsError()
 
-        scopes: list[str] = []
-        for level_id in user.access_level:
-            level = self._access_level_repo.find_by_id(level_id)
-            if level is not None:
-                scopes.append(level.title)
+        scopes = scopes_for(user.access_level)
         access_token = self._token_provider.generate_access_token(
             user_id=user.id,
             scopes=scopes,

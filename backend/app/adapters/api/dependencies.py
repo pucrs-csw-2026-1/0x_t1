@@ -5,7 +5,6 @@ from fastapi.security import OAuth2PasswordBearer, SecurityScopes
 
 from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.adapters.config.settings import settings
-from app.adapters.dynamo_access_level_repository import DynamoAccessLevelRepository
 from app.adapters.dynamo_user_repository import DynamoUserRepository
 from app.adapters.in_memory_refresh_token_repository import (
     InMemoryRefreshTokenRepository,
@@ -83,12 +82,8 @@ def require_scope(required_scope: str) -> Callable[..., str]:
 def get_user_service() -> UserService:
     """Constrói e retorna uma instância de UserService."""
     repo = DynamoUserRepository(table_name=settings.dynamodb_table_users)
-    access_level_repo = DynamoAccessLevelRepository(
-        table_name=settings.dynamodb_table_access_levels
-    )
     return UserService(
         user_repo=repo,
-        access_level_repo=access_level_repo,
         refresh_token_repo=_refresh_token_repository,
     )
 
@@ -98,14 +93,10 @@ def get_auth_service() -> AuthService:
     user_repository = DynamoUserRepository(table_name=settings.dynamodb_table_users)
     password_hasher = BcryptPasswordHasher()
     token_provider = JwtTokenProvider(settings, user_repository)
-    access_level_repo = DynamoAccessLevelRepository(
-        table_name=settings.dynamodb_table_access_levels
-    )
 
     return AuthService(
         user_repository=user_repository,
         password_hasher=password_hasher,
         token_provider=token_provider,
         refresh_repository=_refresh_token_repository,
-        access_level_repo=access_level_repo,
     )
