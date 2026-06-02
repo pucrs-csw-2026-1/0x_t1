@@ -234,7 +234,8 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 │   └── requirements-dev.txt                 # Dependências de desenvolvimento
 │
 ├── bruno/                                   # Smoke tests HTTP (coleção Bruno) + environments
-├── terraform/                               # IaC (LocalStack + DynamoDB) + diagrama do banco (db_model.png)
+├── infra/                                   # IaC (Ministack + DynamoDB), provision.sh + diagrama do banco (db_model.png)
+├── docker-compose.yml                       # Orquestra infra + provisionamento (Terraform) + backend
 ├── .github/                                 # Workflows CI/CD (ci, cd, pr-gate, sync-dev)
 ├── .ai_log/                                 # Logs dos prompts de IA usados no desenvolvimento (req. da disciplina)
 ├── t1_construcao.drawio.svg                 # Diagrama da arquitetura hexagonal (exportado do draw.io)
@@ -330,18 +331,26 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 ```
 
-### 5. Suba o Ministack e provisione as tabelas
+### 5. Suba a stack local
 
-A stack DynamoDB roda localmente via Docker Compose (Ministack) e é provisionada por Terraform. Da raiz do projeto:
+A forma recomendada é o `docker-compose.yml` da **raiz**, que orquestra três serviços:
+
+| Serviço | Papel |
+| --- | --- |
+| `infra` | Ministack com DynamoDB local na porta `4566` (estado no volume `ministack-data`) |
+| `provision` | Provisionamento one-shot via Terraform ([`infra/provision.sh`](infra/provision.sh)) — só roda `terraform apply` se a infra ainda não existir |
+| `backend` | API FastAPI, sobe após o provisionamento concluir |
+
+Da raiz do projeto:
 
 ```bash
-cd terraform
-docker compose up -d
-terraform init   # primeira vez ou após mudar providers
-terraform apply
+docker compose up -d            # sobe tudo (provisiona só na primeira vez)
+docker compose logs -f backend  # acompanha o backend (exposto em :8080)
 ```
 
-Para detalhes (verificação, encerramento, persistência), veja [terraform/README.md](terraform/README.md).
+O container `infra` **não é recriado** entre `up`s enquanto a config não muda, e o `provision` **pula o Terraform** quando a infra já está provisionada (estado no volume `tfstate`). Para apenas a infra (rodando o backend via uvicorn local), use `docker compose up -d infra`.
+
+Para detalhes (verificação, encerramento, Terraform direto no host), veja [infra/README.md](infra/README.md).
 
 ---
 
@@ -360,7 +369,7 @@ uvicorn app.main:app --reload
 
 ### Modo 2 — Container Docker
 
-Pré-requisitos: LocalStack rodando (`cd terraform && docker compose up -d`) e Terraform aplicado.
+Pré-requisitos: infra rodando (`docker compose up -d infra`) e tabela provisionada (`docker compose up provision`).
 
 **Build da imagem** (do diretório raiz do projeto):
 
@@ -410,7 +419,7 @@ Em qualquer um dos modos, a documentação interativa estará disponível em:
 
 O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. A modelagem foi projetada para suportar autenticação, controle de acesso e gerenciamento de usuários com eficiência.
 
-![Modelo do Banco de Dados](./terraform/db_model.png)
+![Modelo do Banco de Dados](./infra/db_model.png)
 
 ### Tabelas
 
@@ -1076,7 +1085,7 @@ cd backend; pytest tests/
 **Solução:** garanta o Ministack de pé e a tabela provisionada:
 
 ```bash
-cd terraform && docker compose up -d && terraform apply -auto-approve
+docker compose up -d infra && docker compose up provision
 ```
 
 E reiniciar o app. O `--reload` do uvicorn detecta o arquivo mas pode não disparar o lifespan novamente — `Ctrl+C` e re-execução são mais seguros.
@@ -1125,10 +1134,8 @@ aws --endpoint-url=http://localhost:4566 dynamodb delete-item \
 **Solução:** zerar o estado do DynamoDB local:
 
 ```bash
-cd terraform
-docker compose down -v       # remove o volume com dados
-docker compose up -d
-terraform apply -auto-approve
+docker compose down -v       # remove os volumes (zera DynamoDB + estado do Terraform)
+docker compose up -d         # sobe a infra e reprovisiona do zero
 ```
 
 Depois reinicie o app (`uvicorn app.main:app --reload`) — o seed admin sobe junto.
