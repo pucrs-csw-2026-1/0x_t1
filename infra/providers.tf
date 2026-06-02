@@ -7,6 +7,15 @@ terraform {
   }
 }
 
+# Endpoint do DynamoDB local (Ministack). No host, o default aponta para
+# localhost:4566. Quando o Terraform roda dentro do Compose, o serviço de
+# provisionamento sobrescreve via TF_VAR_dynamodb_endpoint=http://infra:4566
+# (nome do serviço na rede do Compose).
+variable "dynamodb_endpoint" {
+  type    = string
+  default = "http://localhost:4566"
+}
+
 provider "aws" {
   region                      = "us-east-1"
   access_key                  = "test"
@@ -17,6 +26,6 @@ provider "aws" {
   skip_requesting_account_id  = true
 
   endpoints {
-    dynamodb = "http://localhost:4566"
+    dynamodb = var.dynamodb_endpoint
   }
 }

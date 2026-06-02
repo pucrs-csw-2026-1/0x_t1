@@ -14,40 +14,41 @@ O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. Para o ambient
 
 ## Configuração e Instalação
 
-### Pré-requisitos
+### Opção recomendada: Docker Compose na raiz
 
-- [Docker](https://docs.docker.com/get-docker/) e Docker Compose
-- [Terraform](https://developer.hashicorp.com/terraform/downloads) `>= 1.5`
-
-### 1. Clone e entre no diretório
-
-```bash
-git clone https://github.com/pucrs-csw-2026-1/0x_t1.git
-cd 0x_t1/terraform
-```
-
-### 2. Suba o container do Ministack
-
-Na pasta `terraform/`, suba o emulador AWS local:
+A forma mais simples de subir a infra é pelo `docker-compose.yml` na **raiz** do
+repositório, que orquestra `infra` (Ministack), `provision` (Terraform one-shot)
+e `backend`. Da raiz do projeto:
 
 ```bash
 docker compose up -d
 ```
 
-O Ministack fica exposto em `http://localhost:4566`. Para parar, use `docker compose down`.
+O serviço `provision` roda os arquivos desta pasta via [`provision.sh`](provision.sh)
+e cria a tabela `user` e seus índices (`email-index`, `username-index`) **apenas
+na primeira vez** — se a infra já estiver provisionada (estado no volume
+`tfstate`), ele sai sem rodar o Terraform. O container `infra` também não é
+recriado entre `up`s enquanto a config não muda, e o DynamoDB persiste no volume
+`ministack-data`. Veja o [README da raiz](../README.md) para o fluxo completo.
 
-### 3. Provisione a tabela com Terraform
+### Opção alternativa: Terraform direto no host
 
-Ainda na pasta `terraform/`, inicialize os providers e aplique a infraestrutura:
+Útil para inspecionar/alterar a infra manualmente. Requer:
+
+- [Docker](https://docs.docker.com/get-docker/) e Docker Compose
+- [Terraform](https://developer.hashicorp.com/terraform/downloads) `>= 1.5`
+
+Suba só o Ministack pela raiz e aplique o Terraform desta pasta (o endpoint
+default já aponta para `http://localhost:4566`):
 
 ```bash
+docker compose up -d infra   # na raiz: sobe só o Ministack
+cd infra
 terraform init
 terraform apply
 ```
 
-Isso cria a tabela `user` e seus índices secundários (`email-index`, `username-index`) dentro do Ministack.
-
-### 4. (Opcional) Verifique a tabela
+### (Opcional) Verifique a tabela
 
 Com a [AWS CLI](https://docs.aws.amazon.com/cli/) instalada, é possível inspecionar o estado do DynamoDB local:
 
@@ -58,11 +59,13 @@ aws --endpoint-url=http://localhost:4566 dynamodb list-tables
 ### Encerrando
 
 ```bash
-terraform destroy   # remove os recursos provisionados
-docker compose down # encerra o container do Ministack
+# Na raiz do projeto:
+docker compose down      # para os containers (mantém os dados nos volumes)
+docker compose down -v   # para e apaga os volumes (zera a infra)
 ```
 
-> O volume `./.ministack-data` guarda o estado do container entre reinicializações. Apague-o se quiser começar do zero.
+> Os dados do Ministack e o estado do Terraform ficam nos volumes nomeados
+> `ministack-data` e `tfstate`. Use `docker compose down -v` para começar do zero.
 
 ## Modelagem do Banco de Dados
 
