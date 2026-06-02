@@ -251,5 +251,126 @@
     },
     "role": "assistant",
     "content": "Commit 3 (chore): logs de IA exigidos pela disciplina:"
+  },
+  {
+    "timestamp": "2026-06-02T21:06:08.024Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Os três commits estão feitos e a árvore está limpa. Agora atendo suas duas mensagens: verificar INTEGRATION.md e corrigir a seção de Configuração e Instalação do README. Vou ler os dois:"
+  },
+  {
+    "timestamp": "2026-06-02T21:06:36.069Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "INTEGRATION.md trata só de JWT/JWKS e integração de consumidores — **não referencia a pasta `terraform/`** nem o compose, então não precisa de ajuste. (Confirmei: nenhuma menção a terraform/infra/docker lá.)\n\nSobre o README: você tem razão, a seção ficou incoerente — os passos 1‑4 montam o ambiente Python local e o passo 5 sobe tudo em container, misturando os dois caminhos. Vou reestruturar em dois caminhos claros:"
+  },
+  {
+    "timestamp": "2026-06-02T21:07:15.898Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Agora corrijo a pré-visualização e faço o commit. A seção \"Executando a Aplicação\" (Modo 1 uvicorn / Modo 2 container) permanece coerente com os dois caminhos. Vou commitar a correção:"
+  },
+  {
+    "timestamp": "2026-06-02T21:07:55.482Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Pronto. Tudo implementado, testado e commitado na branch `feature/docker-compose-orquestracao` (criada a partir de `dev`, conforme o GitFlow do CONTRIBUTING.md), com Conventional Commits e você como autor único.\n\n## O que foi feito\n\n**1. Renomeação `terraform/` → `infra/`** ([infra/](infra/))\n- Pasta renomeada preservando histórico (git detecta os renames).\n- [infra/providers.tf](infra/providers.tf): o endpoint do DynamoDB virou a variável `dynamodb_endpoint` (default `localhost:4566`), sobreposta por `TF_VAR_dynamodb_endpoint` quando roda dentro do Compose.\n\n**2. Orquestração na raiz** ([docker-compose.yml](docker-compose.yml)) com 3 serviços:\n| Serviço | Papel |\n|---|---|\n| `infra` | Ministack/DynamoDB em `:4566`, estado em volume nomeado — **não recriado** entre `up`s |\n| `provision` | One-shot Terraform via [infra/provision.sh](infra/provision.sh) — **pula o Terraform** se a infra já existe |\n| `backend` | API FastAPI em `:8080`, sobe após `provision` concluir |\n\n- [infra/provision.sh](infra/provision.sh): aguarda o Ministack, e se o estado (volume `tfstate`) já contém a tabela, sai sem rodar Terraform; senão `init`+`apply`. Os `.tf` ficam read-only; tudo gravável vai pro volume.\n- Removido o `infra/docker-compose.yml` standalone (substituído pelo da raiz).\n\n**3. Docs**: [infra/README.md](infra/README.md) e [README.md](README.md) atualizados — incluindo a reorganização da seção *Configuração e Instalação* em **Caminho A** (tudo via Compose) e **Caminho B** (dev local com uvicorn).\n\n## Verificação real (subi a stack)\n- `docker compose up -d`: provision criou a tabela `user`, backend respondeu `{\"status\":\"ok\"}` em `/health`, `list-tables` retornou `[\"user\"]`.\n- 2º `docker compose up -d`: `infra`/`backend` seguiram **Running** (não recriados) e o provision logou *\"infraestrutura já provisionada; pulando Terraform\"* (exit 0). ✅\n\n## Commits\n- `refactor:` renomeia terraform/ → infra/ + parametriza endpoint\n- `feat:` docker-compose na raiz (infra + provision + backend)\n- `chore:` logs `.ai_log`\n- `docs:` reorganiza Configuração e Instalação\n\n## Sobre o INTEGRATION.md\nVerifiquei: ele trata só de JWT/JWKS e do contrato de consumidores — **não menciona `terraform/`, infra nem Docker**, então não precisou de ajuste.\n\nNotas: ficou um `.ai_log/prompt_log_2026-06-02` modificado (logging contínuo desta sessão) — deixei sem commitar por ainda estar sendo escrito. Não fiz push nem abri PR (não solicitado); quando quiser, abro o PR de `feature/docker-compose-orquestracao` → `dev`."
+  },
+  {
+    "timestamp": "2026-06-02T21:11:28.588Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "é necessário o container auth provision?"
+  },
+  {
+    "timestamp": "2026-06-02T21:11:37.806Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Boa pergunta — depende do que o bootstrap do próprio backend já faz. Deixa eu verificar o `_ensure_table` do repositório, porque o ponto crítico são os índices (GSIs):"
+  },
+  {
+    "timestamp": "2026-06-02T21:12:15.601Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Verifiquei o código, e a resposta honesta é: **não é estritamente necessário em desenvolvimento** — mas há um bom motivo para mantê‑lo.\n\n## Por quê\n\nO backend já tem um bootstrap defensivo no [main.py:59-64](backend/app/main.py#L59-L64): quando `APP_ENV=development`, ele instancia `DynamoUserRepository(auto_create=True)`, que chama [`_ensure_table`](backend/app/adapters/dynamo_user_repository.py#L120-L149). Esse método cria a tabela `user` com **exatamente os mesmos GSIs** (`email-index`, `username-index`) e o mesmo billing mode que o [infra/dynamodb.tf](infra/dynamodb.tf) — e é idempotente (`describe_table` → retorna se já existe).\n\nOu seja, em dev, a criação da tabela pelo `provision`/Terraform é **redundante** com o que o backend faz sozinho no startup. O próprio comentário no código diz que o bootstrap é um fallback *\"útil quando a Ministack foi recriada e nem sempre o desenvolvedor lembra de rodar terraform apply\"*.\n\nDetalhe importante: o **seed do admin** (`_seed_root_admin`) só acontece no backend — o Terraform não faz isso. Então o lifespan do backend continua necessário de qualquer forma.\n\n## Recomendação: manter\n\n| Manter `provision` | Remover `provision` |\n|---|---|\n| IaC (Terraform) é a fonte da verdade da infra — o bootstrap do app é só fallback | `up` mais rápido, sem pull da imagem do terraform, um serviço a menos |\n| Funciona igual quando `APP_ENV != development` (aí o backend **não** cria a tabela) | Em dev funciona, mas a infra passa a depender de um fallback \"defensivo\" do app |\n| Era exatamente o que você pediu (\"rodar o terraform\") | Em prod/staging quebraria (sem ninguém provisionando a tabela) |\n\nComo você pediu explicitamente o Terraform na orquestração e ele é o caminho \"correto\" de IaC, eu **manteria**. A redundância em dev é inofensiva (custo: ~1s e o pull da imagem na 1ª vez).\n\nSe preferir simplificar, eu posso:\n1. **Remover** o `provision` e o `depends_on` do backend (passa a confiar no bootstrap do app — só funciona em dev), ou\n2. **Manter o `provision` mas tirar a redundância**: desligar o `auto_create` do backend (deixar o Terraform como única fonte), mantendo só o seed do admin.\n\nQuer que eu aplique alguma dessas, ou deixo como está?"
+  },
+  {
+    "timestamp": "2026-06-02T21:14:38.873Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "vamos abrir pr para dev, cuidando para passar na pipe"
+  },
+  {
+    "timestamp": "2026-06-02T21:14:45.754Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Antes de abrir o PR, vou conferir o que a pipeline valida e se algo referencia o caminho `terraform/` que renomeei:"
+  },
+  {
+    "timestamp": "2026-06-02T21:15:00.794Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "CI roda inteiramente em `./backend` (ruff, mypy, pytest ≥80%) e minhas mudanças não tocaram em código Python — então deve passar. Mas vou rodar os mesmos checks localmente para garantir o baseline verde antes de abrir o PR:"
+  },
+  {
+    "timestamp": "2026-06-02T21:16:10.688Z",
+    "source": "claude",
+    "git_branch": "feature/docker-compose-orquestracao",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Pipeline local toda verde: **ruff** ok, **format** ok, **mypy** sem erros, **pytest 367 passed, cobertura 92%** (≥80%). As mudanças não tocam em `backend/`, então a CI (que roda em `./backend`) passa.\n\nAgora commito o log de IA pendente, faço push e abro o PR:"
   }
 ]
