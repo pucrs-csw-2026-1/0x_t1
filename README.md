@@ -248,39 +248,74 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 
 ## Configuração e Instalação
 
+Há dois caminhos. O **Caminho A** sobe tudo em containers e é o mais rápido para
+ver o serviço de pé. O **Caminho B** prepara o ambiente Python local para
+desenvolvimento iterativo (uvicorn com auto-reload), usando o Compose apenas para
+a infraestrutura.
+
 ### Pré-requisitos
 
-- Python 3.12+
-- [Docker](https://docs.docker.com/get-docker/) e Docker Compose
-- [Terraform](https://developer.hashicorp.com/terraform/downloads) `>= 1.5`
+- [Docker](https://docs.docker.com/get-docker/) e Docker Compose — necessário em ambos os caminhos
+- Python 3.12+ — apenas para o Caminho B (dev local)
+- [Terraform](https://developer.hashicorp.com/terraform/downloads) `>= 1.5` — opcional, só para rodar o IaC direto no host (ver [infra/README.md](infra/README.md))
 - (Opcional) [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) para inspecionar o DynamoDB local
-
-### 1. Clone e entre no diretório
 
 ```bash
 git clone https://github.com/pucrs-csw-2026-1/0x_t1.git
-cd backend
+cd 0x_t1
 ```
 
-### 2. Crie e ative um ambiente virtual
+---
+
+### Caminho A — Tudo via Docker Compose (recomendado)
+
+O `docker-compose.yml` da **raiz** orquestra três serviços:
+
+| Serviço | Papel |
+| --- | --- |
+| `infra` | Ministack com DynamoDB local na porta `4566` (estado no volume `ministack-data`) |
+| `provision` | Provisionamento one-shot via Terraform ([`infra/provision.sh`](infra/provision.sh)) — só roda `terraform apply` se a infra ainda não existir |
+| `backend` | API FastAPI (porta `8080`), sobe após o provisionamento concluir |
+
+Da raiz do projeto:
 
 ```bash
+docker compose up -d            # sobe tudo (provisiona só na primeira vez)
+docker compose logs -f backend  # acompanha o backend (exposto em :8080)
+curl http://localhost:8080/health
+```
+
+O backend roda no container já configurado (endpoint do DynamoDB, chaves RS256 de
+dev e seed do admin) — **não é preciso `.env` nem venv**. O container `infra`
+**não é recriado** entre `up`s enquanto a config não muda, e o `provision`
+**pula o Terraform** quando a infra já está provisionada (estado no volume
+`tfstate`). Para parar mantendo os dados use `docker compose down`; para zerar,
+`docker compose down -v`.
+
+---
+
+### Caminho B — Desenvolvimento local (uvicorn com auto-reload)
+
+#### 1. Crie e ative um ambiente virtual
+
+```bash
+cd backend
 python -m venv .venv
 source .venv/bin/activate          # Linux / macOS
 source .venv/Scripts/activate      # Windows (Git Bash / MINGW64)
 .venv\Scripts\activate             # Windows (cmd / PowerShell)
 ```
 
-### 3. Instale as dependências
+#### 2. Instale as dependências
 
 ```bash
 pip install -r requirements.txt        # produção
 pip install -r requirements-dev.txt    # ferramentas de dev/test
 ```
 
-### 4. Configure as variáveis de ambiente
+#### 3. Configure as variáveis de ambiente
 
-Copie `.env.example` para `.env` e preencha os valores:
+Copie `.env.example` para `.env` (em `backend/`) e ajuste se necessário:
 
 ```bash
 cp .env.example .env
@@ -331,26 +366,18 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 ```
 
-### 5. Suba a stack local
+#### 4. Suba só a infraestrutura e provisione a tabela
 
-A forma recomendada é o `docker-compose.yml` da **raiz**, que orquestra três serviços:
-
-| Serviço | Papel |
-| --- | --- |
-| `infra` | Ministack com DynamoDB local na porta `4566` (estado no volume `ministack-data`) |
-| `provision` | Provisionamento one-shot via Terraform ([`infra/provision.sh`](infra/provision.sh)) — só roda `terraform apply` se a infra ainda não existir |
-| `backend` | API FastAPI, sobe após o provisionamento concluir |
-
-Da raiz do projeto:
+Da raiz do projeto, suba apenas os serviços de infra (sem o backend em container):
 
 ```bash
-docker compose up -d            # sobe tudo (provisiona só na primeira vez)
-docker compose logs -f backend  # acompanha o backend (exposto em :8080)
+docker compose up -d infra      # Ministack (DynamoDB local em :4566)
+docker compose up provision     # cria a tabela `user` (só na primeira vez)
 ```
 
-O container `infra` **não é recriado** entre `up`s enquanto a config não muda, e o `provision` **pula o Terraform** quando a infra já está provisionada (estado no volume `tfstate`). Para apenas a infra (rodando o backend via uvicorn local), use `docker compose up -d infra`.
+#### 5. Rode o backend com uvicorn
 
-Para detalhes (verificação, encerramento, Terraform direto no host), veja [infra/README.md](infra/README.md).
+Veja [Executando a Aplicação](#executando-a-aplicação) — `uvicorn app.main:app --reload`.
 
 ---
 
