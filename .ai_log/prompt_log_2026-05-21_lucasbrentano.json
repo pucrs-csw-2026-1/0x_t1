@@ -1,0 +1,596 @@
+[
+  {
+    "timestamp": "2026-05-21T20:48:05.880Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "a minha API está permitindo, por algum endpoint, que seja criado diretamente um usuário admin?"
+  },
+  {
+    "timestamp": "2026-05-21T20:48:14.605Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "O router de `/users/register` parece seguro (o campo `access_level` está deprecated e o serviço é chamado sem ele). Mas preciso conferir o `user_service.register` e os demais routers para garantir."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:31.193Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Falta confirmar o `auth_router` para fechar a auditoria."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:49.015Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Não. A API não permite criar um admin diretamente por nenhum endpoint. Auditoria:\n\n**Cadastro público — [`POST /users/register`](backend/app/adapters/api/user_router.py#L255)**\n- O payload `UserCreate` tem `access_level`, mas está marcado como `deprecated=True` e a descrição diz \"Ignorado. Cadastro público sempre cria perfil 'user'.\" ([user_router.py:110-114](backend/app/adapters/api/user_router.py#L110-L114))\n- A chamada para o serviço **não repassa** `access_level` ([user_router.py:271-277](backend/app/adapters/api/user_router.py#L271-L277))\n- No service, o role é **hard-coded** via `find_by_title(\"user\")` ([user_service.py:92-103](backend/app/application/user_service.py#L92-L103)) — impossível injetar `admin` por aqui.\n\n**Atualização do próprio perfil — [`PATCH /users/me`](backend/app/adapters/api/user_router.py#L160)**\n- `UserUpdate` só aceita `first_name`, `last_name`, `email`, `username` ([user_router.py:53-65](backend/app/adapters/api/user_router.py#L53-L65)). Não há como auto-promover.\n\n**Promoção via admin — [`PATCH /admin/users/{user_id}`](backend/app/adapters/api/admin_router.py#L121)**\n- Aceita alterar `access_level`, mas exige `Security(get_current_user, scopes=[\"admin\"])` ([admin_router.py:136](backend/app/adapters/api/admin_router.py#L136)). Só admin existente promove — comportamento esperado.\n\n**Auth router** — só `login`, `refresh`, `logout`. Nenhum cria usuário.\n\nConclusão: a única forma de existir um admin é via provisionamento fora da API (seed/terraform) ou promoção feita por um admin já autenticado. O cadastro público está blindado."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:56.524Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "você tem certeza absoluta?"
+  },
+  {
+    "timestamp": "2026-05-21T20:49:03.574Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Boa pergunta — vou fazer uma varredura mais ampla para ter certeza."
+  },
+  {
+    "timestamp": "2026-05-21T20:49:12.057Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Achei algo que precisa ser verificado: `app/main.py:49` atribui `access_level = [user_level.id, admin_level.id]` a algum usuário. Preciso ver o contexto."
+  },
+  {
+    "timestamp": "2026-05-21T20:49:35.265Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Confirmo: **nenhum endpoint HTTP** da API permite criar um admin. Mas a investigação ampliada revelou um detalhe que vale você conhecer (não é via endpoint, mas é um caminho de criação de admin):\n\n## Endpoints HTTP — confirmado seguro\n\nTodas as atribuições de `access_level` no código:\n\n| Local | Como é definido | Exposto na API? |\n|---|---|---|\n| [user_service.py:103](backend/app/application/user_service.py#L103) | hard-coded `[user.id]` no `register` | sim, via `POST /users/register` — força `user` |\n| [user_service.py:202](backend/app/application/user_service.py#L202) | recebe do payload no `admin_update` | sim, via `PATCH /admin/users/{id}` — exige scope `admin` |\n| [admin_router.py:143](backend/app/adapters/api/admin_router.py#L143) | repasse do payload para o service | mesmo endpoint admin acima |\n| [user_router.py:124](backend/app/adapters/api/user_router.py#L124) | leitura no `to_user_response` | só leitura |\n| [dynamo_user_repository.py:95](backend/app/adapters/dynamo_user_repository.py#L95) | leitura ao desserializar do banco | não é write |\n| [main.py:49](backend/app/main.py#L49) | seed de bootstrap (ver abaixo) | **não exposto via HTTP** |\n\n## O ponto que você deve saber: seed root admin no `lifespan`\n\nEm [main.py:29-50](backend/app/main.py#L29-L50), a função `_seed_root_admin` cria um admin no startup do app **com credenciais de `settings.seed_admin_email` / `settings.seed_admin_password`**. Não é endpoint, é bootstrap interno.\n\n**Salvaguardas atuais:**\n- Só roda quando `app_env == \"development\"` ([main.py:66](backend/app/main.py#L66))\n- É idempotente — não recria se o email já existe ([main.py:32-33](backend/app/main.py#L32-L33))\n\n**Riscos a considerar:**\n1. Se `APP_ENV=development` for usado por engano em produção, um admin com credenciais previsíveis seria criado no boot.\n2. As credenciais `seed_admin_email`/`seed_admin_password` em `settings` — se tiverem default fraco no código (sem env var obrigatória), qualquer dev/CI sobe um admin conhecido. Vale conferir [`app/adapters/config/settings.py`](backend/app/adapters/config/settings.py) para ver se há default hard-coded.\n\nResposta direta à sua pergunta: **sim, tenho certeza — nenhum endpoint da API permite criar admin diretamente.** A única superfície de criação de admin é o seed de desenvolvimento no lifespan, que não é HTTP.\n\nQuer que eu confira o `settings.py` para ver se há credenciais default e se há risco real do seed disparar fora de dev?"
+  },
+  {
+    "timestamp": "2026-05-21T21:44:20.426Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "e na questão de upgrade do usuário de user para admin, só admin pode fazer isso, correto?"
+  },
+  {
+    "timestamp": "2026-05-21T21:44:27.941Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Bom ponto — vou conferir como o gate `scopes=[\"admin\"]` é realmente validado, não só assumir pelo decorator."
+  },
+  {
+    "timestamp": "2026-05-21T21:44:36.633Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "O gate confia no claim `scopes` do JWT. Preciso ver como `scopes` é populado durante o login para descobrir se um usuário comum poderia ganhar `\"admin\"` no token."
+  },
+  {
+    "timestamp": "2026-05-21T21:45:10.738Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Sim, só admin pode promover. Mapeei a cadeia completa para te dar uma resposta sólida:\n\n## Caminho da escalação verificado\n\n| Camada | Onde | O que faz |\n|---|---|---|\n| Endpoint | [`PATCH /admin/users/{user_id}`](backend/app/adapters/api/admin_router.py#L121) | Único endpoint que altera `access_level` |\n| Gate | [`Security(get_current_user, scopes=[\"admin\"])`](backend/app/adapters/api/admin_router.py#L136) | Bloqueia 403 se o JWT não tiver scope `admin` |\n| Validação do scope | [`dependencies.py:59-66`](backend/app/adapters/api/dependencies.py#L59-L66) | Lê `scopes` do payload do JWT e compara com o requerido |\n| Origem do scope `admin` | [`auth_service.py:59-67`](backend/app/application/auth_service.py#L59-L67) | No login, deriva `scopes` a partir de `user.access_level` no **banco** → traduz UUID para `title` (`\"admin\"`, `\"user\"`) |\n\nA confiança é correta porque o scope é derivado do estado do banco no login — o cliente não fornece. Para alguém ganhar `\"admin\"` no JWT, precisa antes ter o role admin no banco; e o único caminho para gravar isso é o `PATCH /admin/users/{id}`, que já exige admin. Sem ciclo de auto-promoção.\n\n## Ressalvas que valem você conhecer (não são escalation, mas tocam no tema)\n\n1. **Refresh não re-deriva scopes do banco.** Em [`auth_service.py:114-118`](backend/app/application/auth_service.py#L114-L118), o `refresh` simplesmente copia `scopes` do payload do refresh token para o novo access token. Implicações:\n   - **Promoção:** se Alice (user) for promovida a admin, **ela precisa relogar** — o refresh token antigo continuará emitindo tokens sem scope `admin`. ✅ não é problema de segurança.\n   - **Rebaixamento:** se Bob (admin) for rebaixado, o refresh token antigo continua emitindo access tokens com scope `admin` até o refresh expirar. ⚠️ Não é auto-promoção, é falha em **propagar a revogação**. Se quiser mitigar, o `admin_update` poderia revogar refresh tokens do usuário rebaixado — hoje só o `deactivate` faz isso.\n\n2. **Seed root admin** ([main.py:29-50](backend/app/main.py#L29-L50)) — fora da API, só em `app_env=development`, como já discutido.\n\nResposta direta: **sim, só admin pode fazer upgrade de usuário para admin via API.** Não há atalho."
+  },
+  {
+    "timestamp": "2026-05-21T21:46:32.921Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "não tem erro de segurança em absolutamente nenhum lugar, mesmo?"
+  },
+  {
+    "timestamp": "2026-05-21T21:46:54.573Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Não vou afirmar \"zero problemas\" sem auditar de fato. Vou varrer vetores comuns — autenticação, criptografia, configuração, exposição de dados, CORS, etc."
+  },
+  {
+    "timestamp": "2026-05-21T21:47:25.501Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Já vi vários pontos a aprofundar. Mais alguns checks."
+  },
+  {
+    "timestamp": "2026-05-21T21:48:19.157Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Achei vários problemas reais. Vou listar tudo, ranqueado por severidade. Nenhum bloqueia a entrega, mas vários valem mitigação:\n\n## Alta severidade\n\n**1. Logout permite revogar refresh token de qualquer usuário**\n[`auth_router.py:155-165`](backend/app/adapters/api/auth_router.py#L155-L165) exige access token (autentica que você é alguém), mas o `refresh_token` vem no body e **nunca é verificado se o `sub` dele bate com o `user_id` do access token**.\n\nConsequência: se eu obtiver o refresh token de outra pessoa (XSS, log vazado, screenshot), basta um access token meu para deslogá-la. DoS de sessão. Correção: decodificar `body.refresh_token`, comparar `sub` com `user_id` autenticado, retornar 403 se diferente.\n\n**2. Senha default do seed admin hard-coded no código**\n[`settings.py:27-28`](backend/app/adapters/config/settings.py#L27-L28):\n```python\nseed_admin_email: str = \"admin@local.dev\"\nseed_admin_password: str = \"Admin@123\"\n```\nSe `SEED_ADMIN_PASSWORD` não estiver no `.env` (ou alguém subir com `APP_ENV=development` em outro ambiente), bootstrap cria admin com senha pública conhecida — qualquer um lendo seu repo testa essa credencial. Correção: remover defaults; deixar `seed_admin_password: str` (sem default) força erro de boot se não vier do `.env`.\n\n## Média severidade\n\n**3. Rebaixamento de admin não invalida tokens existentes**\nJá citei: `admin_update` em [user_service.py:179-202](backend/app/application/user_service.py#L179-L202) muda `access_level` no banco mas não revoga refresh tokens. Como o `refresh` em [auth_service.py:114](backend/app/application/auth_service.py#L114) **copia scopes do JWT em vez de re-derivar do banco**, o admin rebaixado mantém scope `admin` até o refresh expirar (7 dias por default). Correção: chamar `refresh_repository.revoke_all_by_user(target_user_id)` no `admin_update` quando `access_level` mudar; ou re-derivar scopes do banco no `refresh`.\n\n**4. Sem rate limiting em `/auth/login` e `/auth/refresh`**\nBrute force de senhas e token stuffing sem nenhuma trava. Correção: middleware tipo `slowapi` por IP + por email no login.\n\n**5. Repositório de refresh tokens em memória**\n[`in_memory_refresh_token_repository.py:11-13`](backend/app/adapters/in_memory_refresh_token_repository.py#L11-L13) — set Python in-process. Implicações:\n   - Tokens revogados **voltam a valer após restart do app**.\n   - Em deploy com múltiplas réplicas, revogação só vale na instância que recebeu o `logout`.\n\nO comentário em [`dependencies.py:22`](backend/app/adapters/api/dependencies.py#L22) reconhece isso (\"Em produção, substituir por Redis/DDB\"), então é uma TODO ciente. Mas hoje, em prod, o logout é parcialmente quebrado.\n\n## Baixa severidade\n\n**6. Email do usuário embutido no access token**\n[`jwt_token_provider.py:30-37`](backend/app/adapters/jwt_token_provider.py#L30-L37) — JWT é base64 não-criptografado, qualquer um que veja o token lê o email. Não é catastrófico (o dono já sabe o próprio email), mas se um token vazar em log/proxy/storage de cliente, o email vaza junto. E há um `try/except Exception: pass` silencioso ([jwt_token_provider.py:35-37](backend/app/adapters/jwt_token_provider.py#L35-L37)) que esconde falhas de I/O. Vale considerar se esse claim é realmente necessário.\n\n**7. CORS não configurado**\nNão há `add_middleware(CORSMiddleware, ...)` em [main.py](backend/app/main.py). Por default FastAPI bloqueia tudo de origem cruzada (browser não envia), então não é um furo *aberto*, mas significa que qualquer integração com frontend hoje depende de proxy/mesma origem. Quando configurar, **não use `allow_origins=[\"*\"]` junto com `allow_credentials=True`** — vira escalation real.\n\n**8. JWT sem claims `iss` / `aud` / `iat`**\n[`jwt_token_provider.py`](backend/app/adapters/jwt_token_provider.py) só seta `sub`, `scopes`, `exp` (e `email` no access). Se você no futuro tiver outros serviços com o mesmo `secret_key`, tokens viram intercambiáveis entre serviços. Boa prática: adicionar `iss` e validar no `decode`.\n\n**9. Sem distinção entre access e refresh token no decode**\nTanto access quanto refresh são decodificados pelo mesmo `decode_token`. Não há claim `type: \"refresh\"` validado. Se um endpoint usar `decode_token` por engano em contexto errado, um access pode passar como refresh ou vice-versa. Mitigação atual: as docstrings em [auth_router.py:29-30](backend/app/adapters/api/auth_router.py#L29-L30) mencionam `\"type\": \"refresh\"` mas o código não emite nem valida esse claim.\n\n## Itens verificados que estão OK\n\n- `secret_key` sem default → obriga vir do `.env` ✅\n- `.env` está no `.gitignore` e não está rastreado pelo git ✅\n- Senhas com bcrypt via passlib (cost factor default 12) ✅\n- Validação de senha forte em `register` e `change_password` ✅\n- Login não revela se o email existe (mesmo erro para email/senha inválidos e conta desativada) ✅\n- Promoção a admin exige scope admin (auditado nas duas mensagens anteriores) ✅\n- Cadastro público força role `user` ✅\n- `algorithms=[settings.algorithm]` no decode previne ataque de `alg: none` ✅\n- Nenhum log com senha/token/secret ✅\n- `deactivate` revoga refresh tokens do próprio usuário ✅\n\n## Resumo\n\nNão, **não está livre de problemas de segurança**. Os mais relevantes para corrigir antes da entrega: **#1 (logout cross-user)** e **#2 (senha default do seed)**. Os demais são dívida que vale documentar/aceitar para um trabalho de disciplina, mas que num sistema real precisariam ser tratados.\n\nQuer que eu corrija algum desses? Posso começar pelos #1 e #2 que são pequenos e de alto impacto."
+  },
+  {
+    "timestamp": "2026-05-21T21:49:13.834Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "então nenhum é referente a regra de authorization para criar admin?"
+  },
+  {
+    "timestamp": "2026-05-21T21:49:34.525Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Correto. Nenhum dos 9 problemas quebra a regra de autorização para criar/promover admin. A regra em si — `POST /users/register` força role `user`, `PATCH /admin/users/{id}` exige scope `admin` — está bem implementada e fechada.\n\nMapeando cada achado:\n\n| # | Problema | Permite virar admin sem ser admin? |\n|---|---|---|\n| 1 | Logout cross-user | Não — DoS de sessão alheia |\n| 2 | Senha default do seed admin | **Tangencialmente** — não burla o gate; explora credencial padrão conhecida se `APP_ENV=development` em outro ambiente |\n| 3 | Rebaixamento não invalida tokens | Não — mantém privilégio que já tinha |\n| 4 | Sem rate limiting | Não — facilita brute force de senha, não de role |\n| 5 | Refresh repo em memória | Não — afeta logout, não autorização |\n| 6 | Email no JWT | Não — vazamento de PII |\n| 7 | CORS | Não — não está aberto |\n| 8 | Sem `iss`/`aud` | Não — risco futuro entre serviços |\n| 9 | Sem `type` em refresh | Não — confusão potencial de uso |\n\nO único que chega perto é **#2**, mas pela porta de credencial (alguém logaria como `admin@local.dev` / `Admin@123`), não burlando a regra de autorização. O gate `scopes=[\"admin\"]` continua funcionando — o atacante simplesmente entraria com uma conta admin pré-existente.\n\nResumindo: **a regra de autorização para criar admin está sólida.** Os achados são de outras superfícies (gestão de sessão, hardening de config, rate limiting, propagação de revogação)."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:05.880Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "a minha API está permitindo, por algum endpoint, que seja criado diretamente um usuário admin?"
+  },
+  {
+    "timestamp": "2026-05-21T20:48:14.605Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "O router de `/users/register` parece seguro (o campo `access_level` está deprecated e o serviço é chamado sem ele). Mas preciso conferir o `user_service.register` e os demais routers para garantir."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:31.193Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Falta confirmar o `auth_router` para fechar a auditoria."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:49.015Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Não. A API não permite criar um admin diretamente por nenhum endpoint. Auditoria:\n\n**Cadastro público — [`POST /users/register`](backend/app/adapters/api/user_router.py#L255)**\n- O payload `UserCreate` tem `access_level`, mas está marcado como `deprecated=True` e a descrição diz \"Ignorado. Cadastro público sempre cria perfil 'user'.\" ([user_router.py:110-114](backend/app/adapters/api/user_router.py#L110-L114))\n- A chamada para o serviço **não repassa** `access_level` ([user_router.py:271-277](backend/app/adapters/api/user_router.py#L271-L277))\n- No service, o role é **hard-coded** via `find_by_title(\"user\")` ([user_service.py:92-103](backend/app/application/user_service.py#L92-L103)) — impossível injetar `admin` por aqui.\n\n**Atualização do próprio perfil — [`PATCH /users/me`](backend/app/adapters/api/user_router.py#L160)**\n- `UserUpdate` só aceita `first_name`, `last_name`, `email`, `username` ([user_router.py:53-65](backend/app/adapters/api/user_router.py#L53-L65)). Não há como auto-promover.\n\n**Promoção via admin — [`PATCH /admin/users/{user_id}`](backend/app/adapters/api/admin_router.py#L121)**\n- Aceita alterar `access_level`, mas exige `Security(get_current_user, scopes=[\"admin\"])` ([admin_router.py:136](backend/app/adapters/api/admin_router.py#L136)). Só admin existente promove — comportamento esperado.\n\n**Auth router** — só `login`, `refresh`, `logout`. Nenhum cria usuário.\n\nConclusão: a única forma de existir um admin é via provisionamento fora da API (seed/terraform) ou promoção feita por um admin já autenticado. O cadastro público está blindado."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:56.524Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "você tem certeza absoluta?"
+  },
+  {
+    "timestamp": "2026-05-21T20:49:03.574Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Boa pergunta — vou fazer uma varredura mais ampla para ter certeza."
+  },
+  {
+    "timestamp": "2026-05-21T20:49:12.057Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Achei algo que precisa ser verificado: `app/main.py:49` atribui `access_level = [user_level.id, admin_level.id]` a algum usuário. Preciso ver o contexto."
+  },
+  {
+    "timestamp": "2026-05-21T20:49:35.265Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Confirmo: **nenhum endpoint HTTP** da API permite criar um admin. Mas a investigação ampliada revelou um detalhe que vale você conhecer (não é via endpoint, mas é um caminho de criação de admin):\n\n## Endpoints HTTP — confirmado seguro\n\nTodas as atribuições de `access_level` no código:\n\n| Local | Como é definido | Exposto na API? |\n|---|---|---|\n| [user_service.py:103](backend/app/application/user_service.py#L103) | hard-coded `[user.id]` no `register` | sim, via `POST /users/register` — força `user` |\n| [user_service.py:202](backend/app/application/user_service.py#L202) | recebe do payload no `admin_update` | sim, via `PATCH /admin/users/{id}` — exige scope `admin` |\n| [admin_router.py:143](backend/app/adapters/api/admin_router.py#L143) | repasse do payload para o service | mesmo endpoint admin acima |\n| [user_router.py:124](backend/app/adapters/api/user_router.py#L124) | leitura no `to_user_response` | só leitura |\n| [dynamo_user_repository.py:95](backend/app/adapters/dynamo_user_repository.py#L95) | leitura ao desserializar do banco | não é write |\n| [main.py:49](backend/app/main.py#L49) | seed de bootstrap (ver abaixo) | **não exposto via HTTP** |\n\n## O ponto que você deve saber: seed root admin no `lifespan`\n\nEm [main.py:29-50](backend/app/main.py#L29-L50), a função `_seed_root_admin` cria um admin no startup do app **com credenciais de `settings.seed_admin_email` / `settings.seed_admin_password`**. Não é endpoint, é bootstrap interno.\n\n**Salvaguardas atuais:**\n- Só roda quando `app_env == \"development\"` ([main.py:66](backend/app/main.py#L66))\n- É idempotente — não recria se o email já existe ([main.py:32-33](backend/app/main.py#L32-L33))\n\n**Riscos a considerar:**\n1. Se `APP_ENV=development` for usado por engano em produção, um admin com credenciais previsíveis seria criado no boot.\n2. As credenciais `seed_admin_email`/`seed_admin_password` em `settings` — se tiverem default fraco no código (sem env var obrigatória), qualquer dev/CI sobe um admin conhecido. Vale conferir [`app/adapters/config/settings.py`](backend/app/adapters/config/settings.py) para ver se há default hard-coded.\n\nResposta direta à sua pergunta: **sim, tenho certeza — nenhum endpoint da API permite criar admin diretamente.** A única superfície de criação de admin é o seed de desenvolvimento no lifespan, que não é HTTP.\n\nQuer que eu confira o `settings.py` para ver se há credenciais default e se há risco real do seed disparar fora de dev?"
+  },
+  {
+    "timestamp": "2026-05-21T21:44:20.426Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "e na questão de upgrade do usuário de user para admin, só admin pode fazer isso, correto?"
+  },
+  {
+    "timestamp": "2026-05-21T21:44:27.941Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Bom ponto — vou conferir como o gate `scopes=[\"admin\"]` é realmente validado, não só assumir pelo decorator."
+  },
+  {
+    "timestamp": "2026-05-21T21:44:36.633Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "O gate confia no claim `scopes` do JWT. Preciso ver como `scopes` é populado durante o login para descobrir se um usuário comum poderia ganhar `\"admin\"` no token."
+  },
+  {
+    "timestamp": "2026-05-21T21:45:10.738Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Sim, só admin pode promover. Mapeei a cadeia completa para te dar uma resposta sólida:\n\n## Caminho da escalação verificado\n\n| Camada | Onde | O que faz |\n|---|---|---|\n| Endpoint | [`PATCH /admin/users/{user_id}`](backend/app/adapters/api/admin_router.py#L121) | Único endpoint que altera `access_level` |\n| Gate | [`Security(get_current_user, scopes=[\"admin\"])`](backend/app/adapters/api/admin_router.py#L136) | Bloqueia 403 se o JWT não tiver scope `admin` |\n| Validação do scope | [`dependencies.py:59-66`](backend/app/adapters/api/dependencies.py#L59-L66) | Lê `scopes` do payload do JWT e compara com o requerido |\n| Origem do scope `admin` | [`auth_service.py:59-67`](backend/app/application/auth_service.py#L59-L67) | No login, deriva `scopes` a partir de `user.access_level` no **banco** → traduz UUID para `title` (`\"admin\"`, `\"user\"`) |\n\nA confiança é correta porque o scope é derivado do estado do banco no login — o cliente não fornece. Para alguém ganhar `\"admin\"` no JWT, precisa antes ter o role admin no banco; e o único caminho para gravar isso é o `PATCH /admin/users/{id}`, que já exige admin. Sem ciclo de auto-promoção.\n\n## Ressalvas que valem você conhecer (não são escalation, mas tocam no tema)\n\n1. **Refresh não re-deriva scopes do banco.** Em [`auth_service.py:114-118`](backend/app/application/auth_service.py#L114-L118), o `refresh` simplesmente copia `scopes` do payload do refresh token para o novo access token. Implicações:\n   - **Promoção:** se Alice (user) for promovida a admin, **ela precisa relogar** — o refresh token antigo continuará emitindo tokens sem scope `admin`. ✅ não é problema de segurança.\n   - **Rebaixamento:** se Bob (admin) for rebaixado, o refresh token antigo continua emitindo access tokens com scope `admin` até o refresh expirar. ⚠️ Não é auto-promoção, é falha em **propagar a revogação**. Se quiser mitigar, o `admin_update` poderia revogar refresh tokens do usuário rebaixado — hoje só o `deactivate` faz isso.\n\n2. **Seed root admin** ([main.py:29-50](backend/app/main.py#L29-L50)) — fora da API, só em `app_env=development`, como já discutido.\n\nResposta direta: **sim, só admin pode fazer upgrade de usuário para admin via API.** Não há atalho."
+  },
+  {
+    "timestamp": "2026-05-21T21:46:32.921Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "não tem erro de segurança em absolutamente nenhum lugar, mesmo?"
+  },
+  {
+    "timestamp": "2026-05-21T21:46:54.573Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Não vou afirmar \"zero problemas\" sem auditar de fato. Vou varrer vetores comuns — autenticação, criptografia, configuração, exposição de dados, CORS, etc."
+  },
+  {
+    "timestamp": "2026-05-21T21:47:25.501Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Já vi vários pontos a aprofundar. Mais alguns checks."
+  },
+  {
+    "timestamp": "2026-05-21T21:48:19.157Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Achei vários problemas reais. Vou listar tudo, ranqueado por severidade. Nenhum bloqueia a entrega, mas vários valem mitigação:\n\n## Alta severidade\n\n**1. Logout permite revogar refresh token de qualquer usuário**\n[`auth_router.py:155-165`](backend/app/adapters/api/auth_router.py#L155-L165) exige access token (autentica que você é alguém), mas o `refresh_token` vem no body e **nunca é verificado se o `sub` dele bate com o `user_id` do access token**.\n\nConsequência: se eu obtiver o refresh token de outra pessoa (XSS, log vazado, screenshot), basta um access token meu para deslogá-la. DoS de sessão. Correção: decodificar `body.refresh_token`, comparar `sub` com `user_id` autenticado, retornar 403 se diferente.\n\n**2. Senha default do seed admin hard-coded no código**\n[`settings.py:27-28`](backend/app/adapters/config/settings.py#L27-L28):\n```python\nseed_admin_email: str = \"admin@local.dev\"\nseed_admin_password: str = \"Admin@123\"\n```\nSe `SEED_ADMIN_PASSWORD` não estiver no `.env` (ou alguém subir com `APP_ENV=development` em outro ambiente), bootstrap cria admin com senha pública conhecida — qualquer um lendo seu repo testa essa credencial. Correção: remover defaults; deixar `seed_admin_password: str` (sem default) força erro de boot se não vier do `.env`.\n\n## Média severidade\n\n**3. Rebaixamento de admin não invalida tokens existentes**\nJá citei: `admin_update` em [user_service.py:179-202](backend/app/application/user_service.py#L179-L202) muda `access_level` no banco mas não revoga refresh tokens. Como o `refresh` em [auth_service.py:114](backend/app/application/auth_service.py#L114) **copia scopes do JWT em vez de re-derivar do banco**, o admin rebaixado mantém scope `admin` até o refresh expirar (7 dias por default). Correção: chamar `refresh_repository.revoke_all_by_user(target_user_id)` no `admin_update` quando `access_level` mudar; ou re-derivar scopes do banco no `refresh`.\n\n**4. Sem rate limiting em `/auth/login` e `/auth/refresh`**\nBrute force de senhas e token stuffing sem nenhuma trava. Correção: middleware tipo `slowapi` por IP + por email no login.\n\n**5. Repositório de refresh tokens em memória**\n[`in_memory_refresh_token_repository.py:11-13`](backend/app/adapters/in_memory_refresh_token_repository.py#L11-L13) — set Python in-process. Implicações:\n   - Tokens revogados **voltam a valer após restart do app**.\n   - Em deploy com múltiplas réplicas, revogação só vale na instância que recebeu o `logout`.\n\nO comentário em [`dependencies.py:22`](backend/app/adapters/api/dependencies.py#L22) reconhece isso (\"Em produção, substituir por Redis/DDB\"), então é uma TODO ciente. Mas hoje, em prod, o logout é parcialmente quebrado.\n\n## Baixa severidade\n\n**6. Email do usuário embutido no access token**\n[`jwt_token_provider.py:30-37`](backend/app/adapters/jwt_token_provider.py#L30-L37) — JWT é base64 não-criptografado, qualquer um que veja o token lê o email. Não é catastrófico (o dono já sabe o próprio email), mas se um token vazar em log/proxy/storage de cliente, o email vaza junto. E há um `try/except Exception: pass` silencioso ([jwt_token_provider.py:35-37](backend/app/adapters/jwt_token_provider.py#L35-L37)) que esconde falhas de I/O. Vale considerar se esse claim é realmente necessário.\n\n**7. CORS não configurado**\nNão há `add_middleware(CORSMiddleware, ...)` em [main.py](backend/app/main.py). Por default FastAPI bloqueia tudo de origem cruzada (browser não envia), então não é um furo *aberto*, mas significa que qualquer integração com frontend hoje depende de proxy/mesma origem. Quando configurar, **não use `allow_origins=[\"*\"]` junto com `allow_credentials=True`** — vira escalation real.\n\n**8. JWT sem claims `iss` / `aud` / `iat`**\n[`jwt_token_provider.py`](backend/app/adapters/jwt_token_provider.py) só seta `sub`, `scopes`, `exp` (e `email` no access). Se você no futuro tiver outros serviços com o mesmo `secret_key`, tokens viram intercambiáveis entre serviços. Boa prática: adicionar `iss` e validar no `decode`.\n\n**9. Sem distinção entre access e refresh token no decode**\nTanto access quanto refresh são decodificados pelo mesmo `decode_token`. Não há claim `type: \"refresh\"` validado. Se um endpoint usar `decode_token` por engano em contexto errado, um access pode passar como refresh ou vice-versa. Mitigação atual: as docstrings em [auth_router.py:29-30](backend/app/adapters/api/auth_router.py#L29-L30) mencionam `\"type\": \"refresh\"` mas o código não emite nem valida esse claim.\n\n## Itens verificados que estão OK\n\n- `secret_key` sem default → obriga vir do `.env` ✅\n- `.env` está no `.gitignore` e não está rastreado pelo git ✅\n- Senhas com bcrypt via passlib (cost factor default 12) ✅\n- Validação de senha forte em `register` e `change_password` ✅\n- Login não revela se o email existe (mesmo erro para email/senha inválidos e conta desativada) ✅\n- Promoção a admin exige scope admin (auditado nas duas mensagens anteriores) ✅\n- Cadastro público força role `user` ✅\n- `algorithms=[settings.algorithm]` no decode previne ataque de `alg: none` ✅\n- Nenhum log com senha/token/secret ✅\n- `deactivate` revoga refresh tokens do próprio usuário ✅\n\n## Resumo\n\nNão, **não está livre de problemas de segurança**. Os mais relevantes para corrigir antes da entrega: **#1 (logout cross-user)** e **#2 (senha default do seed)**. Os demais são dívida que vale documentar/aceitar para um trabalho de disciplina, mas que num sistema real precisariam ser tratados.\n\nQuer que eu corrija algum desses? Posso começar pelos #1 e #2 que são pequenos e de alto impacto."
+  },
+  {
+    "timestamp": "2026-05-21T21:49:13.834Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "então nenhum é referente a regra de authorization para criar admin?"
+  },
+  {
+    "timestamp": "2026-05-21T21:49:34.525Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Correto. Nenhum dos 9 problemas quebra a regra de autorização para criar/promover admin. A regra em si — `POST /users/register` força role `user`, `PATCH /admin/users/{id}` exige scope `admin` — está bem implementada e fechada.\n\nMapeando cada achado:\n\n| # | Problema | Permite virar admin sem ser admin? |\n|---|---|---|\n| 1 | Logout cross-user | Não — DoS de sessão alheia |\n| 2 | Senha default do seed admin | **Tangencialmente** — não burla o gate; explora credencial padrão conhecida se `APP_ENV=development` em outro ambiente |\n| 3 | Rebaixamento não invalida tokens | Não — mantém privilégio que já tinha |\n| 4 | Sem rate limiting | Não — facilita brute force de senha, não de role |\n| 5 | Refresh repo em memória | Não — afeta logout, não autorização |\n| 6 | Email no JWT | Não — vazamento de PII |\n| 7 | CORS | Não — não está aberto |\n| 8 | Sem `iss`/`aud` | Não — risco futuro entre serviços |\n| 9 | Sem `type` em refresh | Não — confusão potencial de uso |\n\nO único que chega perto é **#2**, mas pela porta de credencial (alguém logaria como `admin@local.dev` / `Admin@123`), não burlando a regra de autorização. O gate `scopes=[\"admin\"]` continua funcionando — o atacante simplesmente entraria com uma conta admin pré-existente.\n\nResumindo: **a regra de autorização para criar admin está sólida.** Os achados são de outras superfícies (gestão de sessão, hardening de config, rate limiting, propagação de revogação)."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:05.880Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "a minha API está permitindo, por algum endpoint, que seja criado diretamente um usuário admin?"
+  },
+  {
+    "timestamp": "2026-05-21T20:48:14.605Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "O router de `/users/register` parece seguro (o campo `access_level` está deprecated e o serviço é chamado sem ele). Mas preciso conferir o `user_service.register` e os demais routers para garantir."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:31.193Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Falta confirmar o `auth_router` para fechar a auditoria."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:49.015Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Não. A API não permite criar um admin diretamente por nenhum endpoint. Auditoria:\n\n**Cadastro público — [`POST /users/register`](backend/app/adapters/api/user_router.py#L255)**\n- O payload `UserCreate` tem `access_level`, mas está marcado como `deprecated=True` e a descrição diz \"Ignorado. Cadastro público sempre cria perfil 'user'.\" ([user_router.py:110-114](backend/app/adapters/api/user_router.py#L110-L114))\n- A chamada para o serviço **não repassa** `access_level` ([user_router.py:271-277](backend/app/adapters/api/user_router.py#L271-L277))\n- No service, o role é **hard-coded** via `find_by_title(\"user\")` ([user_service.py:92-103](backend/app/application/user_service.py#L92-L103)) — impossível injetar `admin` por aqui.\n\n**Atualização do próprio perfil — [`PATCH /users/me`](backend/app/adapters/api/user_router.py#L160)**\n- `UserUpdate` só aceita `first_name`, `last_name`, `email`, `username` ([user_router.py:53-65](backend/app/adapters/api/user_router.py#L53-L65)). Não há como auto-promover.\n\n**Promoção via admin — [`PATCH /admin/users/{user_id}`](backend/app/adapters/api/admin_router.py#L121)**\n- Aceita alterar `access_level`, mas exige `Security(get_current_user, scopes=[\"admin\"])` ([admin_router.py:136](backend/app/adapters/api/admin_router.py#L136)). Só admin existente promove — comportamento esperado.\n\n**Auth router** — só `login`, `refresh`, `logout`. Nenhum cria usuário.\n\nConclusão: a única forma de existir um admin é via provisionamento fora da API (seed/terraform) ou promoção feita por um admin já autenticado. O cadastro público está blindado."
+  },
+  {
+    "timestamp": "2026-05-21T20:48:56.524Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "você tem certeza absoluta?"
+  },
+  {
+    "timestamp": "2026-05-21T20:49:03.574Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Boa pergunta — vou fazer uma varredura mais ampla para ter certeza."
+  },
+  {
+    "timestamp": "2026-05-21T20:49:12.057Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Achei algo que precisa ser verificado: `app/main.py:49` atribui `access_level = [user_level.id, admin_level.id]` a algum usuário. Preciso ver o contexto."
+  },
+  {
+    "timestamp": "2026-05-21T20:49:35.265Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Confirmo: **nenhum endpoint HTTP** da API permite criar um admin. Mas a investigação ampliada revelou um detalhe que vale você conhecer (não é via endpoint, mas é um caminho de criação de admin):\n\n## Endpoints HTTP — confirmado seguro\n\nTodas as atribuições de `access_level` no código:\n\n| Local | Como é definido | Exposto na API? |\n|---|---|---|\n| [user_service.py:103](backend/app/application/user_service.py#L103) | hard-coded `[user.id]` no `register` | sim, via `POST /users/register` — força `user` |\n| [user_service.py:202](backend/app/application/user_service.py#L202) | recebe do payload no `admin_update` | sim, via `PATCH /admin/users/{id}` — exige scope `admin` |\n| [admin_router.py:143](backend/app/adapters/api/admin_router.py#L143) | repasse do payload para o service | mesmo endpoint admin acima |\n| [user_router.py:124](backend/app/adapters/api/user_router.py#L124) | leitura no `to_user_response` | só leitura |\n| [dynamo_user_repository.py:95](backend/app/adapters/dynamo_user_repository.py#L95) | leitura ao desserializar do banco | não é write |\n| [main.py:49](backend/app/main.py#L49) | seed de bootstrap (ver abaixo) | **não exposto via HTTP** |\n\n## O ponto que você deve saber: seed root admin no `lifespan`\n\nEm [main.py:29-50](backend/app/main.py#L29-L50), a função `_seed_root_admin` cria um admin no startup do app **com credenciais de `settings.seed_admin_email` / `settings.seed_admin_password`**. Não é endpoint, é bootstrap interno.\n\n**Salvaguardas atuais:**\n- Só roda quando `app_env == \"development\"` ([main.py:66](backend/app/main.py#L66))\n- É idempotente — não recria se o email já existe ([main.py:32-33](backend/app/main.py#L32-L33))\n\n**Riscos a considerar:**\n1. Se `APP_ENV=development` for usado por engano em produção, um admin com credenciais previsíveis seria criado no boot.\n2. As credenciais `seed_admin_email`/`seed_admin_password` em `settings` — se tiverem default fraco no código (sem env var obrigatória), qualquer dev/CI sobe um admin conhecido. Vale conferir [`app/adapters/config/settings.py`](backend/app/adapters/config/settings.py) para ver se há default hard-coded.\n\nResposta direta à sua pergunta: **sim, tenho certeza — nenhum endpoint da API permite criar admin diretamente.** A única superfície de criação de admin é o seed de desenvolvimento no lifespan, que não é HTTP.\n\nQuer que eu confira o `settings.py` para ver se há credenciais default e se há risco real do seed disparar fora de dev?"
+  },
+  {
+    "timestamp": "2026-05-21T21:44:20.426Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "e na questão de upgrade do usuário de user para admin, só admin pode fazer isso, correto?"
+  },
+  {
+    "timestamp": "2026-05-21T21:44:27.941Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Bom ponto — vou conferir como o gate `scopes=[\"admin\"]` é realmente validado, não só assumir pelo decorator."
+  },
+  {
+    "timestamp": "2026-05-21T21:44:36.633Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "O gate confia no claim `scopes` do JWT. Preciso ver como `scopes` é populado durante o login para descobrir se um usuário comum poderia ganhar `\"admin\"` no token."
+  },
+  {
+    "timestamp": "2026-05-21T21:45:10.738Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Sim, só admin pode promover. Mapeei a cadeia completa para te dar uma resposta sólida:\n\n## Caminho da escalação verificado\n\n| Camada | Onde | O que faz |\n|---|---|---|\n| Endpoint | [`PATCH /admin/users/{user_id}`](backend/app/adapters/api/admin_router.py#L121) | Único endpoint que altera `access_level` |\n| Gate | [`Security(get_current_user, scopes=[\"admin\"])`](backend/app/adapters/api/admin_router.py#L136) | Bloqueia 403 se o JWT não tiver scope `admin` |\n| Validação do scope | [`dependencies.py:59-66`](backend/app/adapters/api/dependencies.py#L59-L66) | Lê `scopes` do payload do JWT e compara com o requerido |\n| Origem do scope `admin` | [`auth_service.py:59-67`](backend/app/application/auth_service.py#L59-L67) | No login, deriva `scopes` a partir de `user.access_level` no **banco** → traduz UUID para `title` (`\"admin\"`, `\"user\"`) |\n\nA confiança é correta porque o scope é derivado do estado do banco no login — o cliente não fornece. Para alguém ganhar `\"admin\"` no JWT, precisa antes ter o role admin no banco; e o único caminho para gravar isso é o `PATCH /admin/users/{id}`, que já exige admin. Sem ciclo de auto-promoção.\n\n## Ressalvas que valem você conhecer (não são escalation, mas tocam no tema)\n\n1. **Refresh não re-deriva scopes do banco.** Em [`auth_service.py:114-118`](backend/app/application/auth_service.py#L114-L118), o `refresh` simplesmente copia `scopes` do payload do refresh token para o novo access token. Implicações:\n   - **Promoção:** se Alice (user) for promovida a admin, **ela precisa relogar** — o refresh token antigo continuará emitindo tokens sem scope `admin`. ✅ não é problema de segurança.\n   - **Rebaixamento:** se Bob (admin) for rebaixado, o refresh token antigo continua emitindo access tokens com scope `admin` até o refresh expirar. ⚠️ Não é auto-promoção, é falha em **propagar a revogação**. Se quiser mitigar, o `admin_update` poderia revogar refresh tokens do usuário rebaixado — hoje só o `deactivate` faz isso.\n\n2. **Seed root admin** ([main.py:29-50](backend/app/main.py#L29-L50)) — fora da API, só em `app_env=development`, como já discutido.\n\nResposta direta: **sim, só admin pode fazer upgrade de usuário para admin via API.** Não há atalho."
+  },
+  {
+    "timestamp": "2026-05-21T21:46:32.921Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "não tem erro de segurança em absolutamente nenhum lugar, mesmo?"
+  },
+  {
+    "timestamp": "2026-05-21T21:46:54.573Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Não vou afirmar \"zero problemas\" sem auditar de fato. Vou varrer vetores comuns — autenticação, criptografia, configuração, exposição de dados, CORS, etc."
+  },
+  {
+    "timestamp": "2026-05-21T21:47:25.501Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Já vi vários pontos a aprofundar. Mais alguns checks."
+  },
+  {
+    "timestamp": "2026-05-21T21:48:19.157Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Achei vários problemas reais. Vou listar tudo, ranqueado por severidade. Nenhum bloqueia a entrega, mas vários valem mitigação:\n\n## Alta severidade\n\n**1. Logout permite revogar refresh token de qualquer usuário**\n[`auth_router.py:155-165`](backend/app/adapters/api/auth_router.py#L155-L165) exige access token (autentica que você é alguém), mas o `refresh_token` vem no body e **nunca é verificado se o `sub` dele bate com o `user_id` do access token**.\n\nConsequência: se eu obtiver o refresh token de outra pessoa (XSS, log vazado, screenshot), basta um access token meu para deslogá-la. DoS de sessão. Correção: decodificar `body.refresh_token`, comparar `sub` com `user_id` autenticado, retornar 403 se diferente.\n\n**2. Senha default do seed admin hard-coded no código**\n[`settings.py:27-28`](backend/app/adapters/config/settings.py#L27-L28):\n```python\nseed_admin_email: str = \"admin@local.dev\"\nseed_admin_password: str = \"Admin@123\"\n```\nSe `SEED_ADMIN_PASSWORD` não estiver no `.env` (ou alguém subir com `APP_ENV=development` em outro ambiente), bootstrap cria admin com senha pública conhecida — qualquer um lendo seu repo testa essa credencial. Correção: remover defaults; deixar `seed_admin_password: str` (sem default) força erro de boot se não vier do `.env`.\n\n## Média severidade\n\n**3. Rebaixamento de admin não invalida tokens existentes**\nJá citei: `admin_update` em [user_service.py:179-202](backend/app/application/user_service.py#L179-L202) muda `access_level` no banco mas não revoga refresh tokens. Como o `refresh` em [auth_service.py:114](backend/app/application/auth_service.py#L114) **copia scopes do JWT em vez de re-derivar do banco**, o admin rebaixado mantém scope `admin` até o refresh expirar (7 dias por default). Correção: chamar `refresh_repository.revoke_all_by_user(target_user_id)` no `admin_update` quando `access_level` mudar; ou re-derivar scopes do banco no `refresh`.\n\n**4. Sem rate limiting em `/auth/login` e `/auth/refresh`**\nBrute force de senhas e token stuffing sem nenhuma trava. Correção: middleware tipo `slowapi` por IP + por email no login.\n\n**5. Repositório de refresh tokens em memória**\n[`in_memory_refresh_token_repository.py:11-13`](backend/app/adapters/in_memory_refresh_token_repository.py#L11-L13) — set Python in-process. Implicações:\n   - Tokens revogados **voltam a valer após restart do app**.\n   - Em deploy com múltiplas réplicas, revogação só vale na instância que recebeu o `logout`.\n\nO comentário em [`dependencies.py:22`](backend/app/adapters/api/dependencies.py#L22) reconhece isso (\"Em produção, substituir por Redis/DDB\"), então é uma TODO ciente. Mas hoje, em prod, o logout é parcialmente quebrado.\n\n## Baixa severidade\n\n**6. Email do usuário embutido no access token**\n[`jwt_token_provider.py:30-37`](backend/app/adapters/jwt_token_provider.py#L30-L37) — JWT é base64 não-criptografado, qualquer um que veja o token lê o email. Não é catastrófico (o dono já sabe o próprio email), mas se um token vazar em log/proxy/storage de cliente, o email vaza junto. E há um `try/except Exception: pass` silencioso ([jwt_token_provider.py:35-37](backend/app/adapters/jwt_token_provider.py#L35-L37)) que esconde falhas de I/O. Vale considerar se esse claim é realmente necessário.\n\n**7. CORS não configurado**\nNão há `add_middleware(CORSMiddleware, ...)` em [main.py](backend/app/main.py). Por default FastAPI bloqueia tudo de origem cruzada (browser não envia), então não é um furo *aberto*, mas significa que qualquer integração com frontend hoje depende de proxy/mesma origem. Quando configurar, **não use `allow_origins=[\"*\"]` junto com `allow_credentials=True`** — vira escalation real.\n\n**8. JWT sem claims `iss` / `aud` / `iat`**\n[`jwt_token_provider.py`](backend/app/adapters/jwt_token_provider.py) só seta `sub`, `scopes`, `exp` (e `email` no access). Se você no futuro tiver outros serviços com o mesmo `secret_key`, tokens viram intercambiáveis entre serviços. Boa prática: adicionar `iss` e validar no `decode`.\n\n**9. Sem distinção entre access e refresh token no decode**\nTanto access quanto refresh são decodificados pelo mesmo `decode_token`. Não há claim `type: \"refresh\"` validado. Se um endpoint usar `decode_token` por engano em contexto errado, um access pode passar como refresh ou vice-versa. Mitigação atual: as docstrings em [auth_router.py:29-30](backend/app/adapters/api/auth_router.py#L29-L30) mencionam `\"type\": \"refresh\"` mas o código não emite nem valida esse claim.\n\n## Itens verificados que estão OK\n\n- `secret_key` sem default → obriga vir do `.env` ✅\n- `.env` está no `.gitignore` e não está rastreado pelo git ✅\n- Senhas com bcrypt via passlib (cost factor default 12) ✅\n- Validação de senha forte em `register` e `change_password` ✅\n- Login não revela se o email existe (mesmo erro para email/senha inválidos e conta desativada) ✅\n- Promoção a admin exige scope admin (auditado nas duas mensagens anteriores) ✅\n- Cadastro público força role `user` ✅\n- `algorithms=[settings.algorithm]` no decode previne ataque de `alg: none` ✅\n- Nenhum log com senha/token/secret ✅\n- `deactivate` revoga refresh tokens do próprio usuário ✅\n\n## Resumo\n\nNão, **não está livre de problemas de segurança**. Os mais relevantes para corrigir antes da entrega: **#1 (logout cross-user)** e **#2 (senha default do seed)**. Os demais são dívida que vale documentar/aceitar para um trabalho de disciplina, mas que num sistema real precisariam ser tratados.\n\nQuer que eu corrija algum desses? Posso começar pelos #1 e #2 que são pequenos e de alto impacto."
+  },
+  {
+    "timestamp": "2026-05-21T21:49:13.834Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "user",
+    "content": "então nenhum é referente a regra de authorization para criar admin?"
+  },
+  {
+    "timestamp": "2026-05-21T21:49:34.525Z",
+    "source": "claude",
+    "git_branch": "dev",
+    "git_user_name": "lucasbrentano",
+    "call_context": {
+      "cwd": "/home/lucasbrentano/Documents/PUCRS/2026_1/construcao/t1"
+    },
+    "role": "assistant",
+    "content": "Correto. Nenhum dos 9 problemas quebra a regra de autorização para criar/promover admin. A regra em si — `POST /users/register` força role `user`, `PATCH /admin/users/{id}` exige scope `admin` — está bem implementada e fechada.\n\nMapeando cada achado:\n\n| # | Problema | Permite virar admin sem ser admin? |\n|---|---|---|\n| 1 | Logout cross-user | Não — DoS de sessão alheia |\n| 2 | Senha default do seed admin | **Tangencialmente** — não burla o gate; explora credencial padrão conhecida se `APP_ENV=development` em outro ambiente |\n| 3 | Rebaixamento não invalida tokens | Não — mantém privilégio que já tinha |\n| 4 | Sem rate limiting | Não — facilita brute force de senha, não de role |\n| 5 | Refresh repo em memória | Não — afeta logout, não autorização |\n| 6 | Email no JWT | Não — vazamento de PII |\n| 7 | CORS | Não — não está aberto |\n| 8 | Sem `iss`/`aud` | Não — risco futuro entre serviços |\n| 9 | Sem `type` em refresh | Não — confusão potencial de uso |\n\nO único que chega perto é **#2**, mas pela porta de credencial (alguém logaria como `admin@local.dev` / `Admin@123`), não burlando a regra de autorização. O gate `scopes=[\"admin\"]` continua funcionando — o atacante simplesmente entraria com uma conta admin pré-existente.\n\nResumindo: **a regra de autorização para criar admin está sólida.** Os achados são de outras superfícies (gestão de sessão, hardening de config, rate limiting, propagação de revogação)."
+  }
+]
