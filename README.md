@@ -235,7 +235,7 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 │
 ├── bruno/                                   # Smoke tests HTTP (coleção Bruno) + environments
 ├── infra/                                   # IaC (Ministack + DynamoDB), provision.sh + diagrama do banco (db_model.png)
-├── docker-compose.yml                       # Orquestra infra + provisionamento (Terraform) + backend
+├── docker-compose.yml                       # Orquestra infra + backend (provision Terraform opcional, via profile)
 ├── .github/                                 # Workflows CI/CD (ci, cd, pr-gate, sync-dev)
 ├── .ai_log/                                 # Logs dos prompts de IA usados no desenvolvimento (req. da disciplina)
 ├── t1_construcao.drawio.svg                 # Diagrama da arquitetura hexagonal (exportado do draw.io)
@@ -269,28 +269,35 @@ cd 0x_t1
 
 ### Caminho A — Tudo via Docker Compose (recomendado)
 
-O `docker-compose.yml` da **raiz** orquestra três serviços:
+O `docker-compose.yml` da **raiz** orquestra dois serviços no fluxo padrão (mais o `provision`, opcional):
 
 | Serviço | Papel |
 | --- | --- |
-| `infra` | Ministack com DynamoDB local na porta `4566` (estado no volume `ministack-data`) |
-| `provision` | Provisionamento one-shot via Terraform ([`infra/provision.sh`](infra/provision.sh)) — só roda `terraform apply` se a infra ainda não existir |
-| `backend` | API FastAPI (porta `8080`), sobe após o provisionamento concluir |
+| `infra` | Ministack com DynamoDB local na porta `4566` (estado no volume `ministack-data`), com healthcheck |
+| `backend` | API FastAPI (porta `8080`); sobe assim que o `infra` fica saudável. Em dev cria a tabela `user` sozinho no startup (lifespan) |
+| `provision` | **Opcional** — provisionamento via Terraform ([`infra/provision.sh`](infra/provision.sh)), isolado no profile `provision`. **Não** sobe no `up` padrão; rode sob demanda para exercitar o IaC |
 
 Da raiz do projeto:
 
 ```bash
-docker compose up -d            # sobe tudo (provisiona só na primeira vez)
+docker compose up -d            # sobe infra + backend
 docker compose logs -f backend  # acompanha o backend (exposto em :8080)
 curl http://localhost:8080/health
 ```
 
 O backend roda no container já configurado (endpoint do DynamoDB, chaves RS256 de
 dev e seed do admin) — **não é preciso `.env` nem venv**. O container `infra`
-**não é recriado** entre `up`s enquanto a config não muda, e o `provision`
-**pula o Terraform** quando a infra já está provisionada (estado no volume
-`tfstate`). Para parar mantendo os dados use `docker compose down`; para zerar,
-`docker compose down -v`.
+**não é recriado** entre `up`s enquanto a config não muda, e a tabela `user` é
+criada automaticamente pelo backend no startup (em dev). Para parar mantendo os
+dados use `docker compose down`; para zerar, `docker compose down -v`.
+
+> **Provisionamento via Terraform é opcional.** O IaC fica no profile `provision`,
+> fora do caminho crítico — assim uma falha de provisionamento não derruba o
+> stack. Para exercitar o Terraform explicitamente:
+>
+> ```bash
+> docker compose --profile provision up provision
+> ```
 
 ---
 
@@ -366,13 +373,20 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env")
 ```
 
-#### 4. Suba só a infraestrutura e provisione a tabela
+#### 4. Suba só a infraestrutura
 
-Da raiz do projeto, suba apenas os serviços de infra (sem o backend em container):
+Da raiz do projeto, suba apenas o Ministack (sem o backend em container):
 
 ```bash
 docker compose up -d infra      # Ministack (DynamoDB local em :4566)
-docker compose up provision     # cria a tabela `user` (só na primeira vez)
+```
+
+Em dev, a tabela `user` é criada automaticamente pelo backend no startup
+(lifespan), então não é preciso provisionar manualmente. Se quiser criar a tabela
+via Terraform (IaC), rode o profile opcional:
+
+```bash
+docker compose --profile provision up provision   # cria a tabela via Terraform (opcional)
 ```
 
 #### 5. Rode o backend com uvicorn
@@ -396,7 +410,7 @@ uvicorn app.main:app --reload
 
 ### Modo 2 — Container Docker
 
-Pré-requisitos: infra rodando (`docker compose up -d infra`) e tabela provisionada (`docker compose up provision`).
+Pré-requisitos: infra rodando (`docker compose up -d infra`). A tabela `user` é criada pelo backend no startup em dev; alternativamente, provisione via Terraform com `docker compose --profile provision up provision`.
 
 **Build da imagem** (do diretório raiz do projeto):
 
@@ -1109,13 +1123,13 @@ cd backend; pytest tests/
 
 **Causa:** o DynamoDB não estava acessível no startup (Ministack fora do ar ou tabela `user` ausente). A função `_seed_root_admin` em `app/main.py` registra o admin root e define seu papel como `ADMIN` — se a tabela `user` não existir, a operação falha e o erro aparece como warning (não derruba o startup).
 
-**Solução:** garanta o Ministack de pé e a tabela provisionada:
+**Solução:** garanta o Ministack de pé (a tabela é criada pelo backend no startup em dev):
 
 ```bash
-docker compose up -d infra && docker compose up provision
+docker compose up -d infra
 ```
 
-E reiniciar o app. O `--reload` do uvicorn detecta o arquivo mas pode não disparar o lifespan novamente — `Ctrl+C` e re-execução são mais seguros.
+Se preferir provisionar via Terraform, rode o profile opcional: `docker compose --profile provision up provision`. E reiniciar o app. O `--reload` do uvicorn detecta o arquivo mas pode não disparar o lifespan novamente — `Ctrl+C` e re-execução são mais seguros.
 
 #### Swagger retorna 401 mesmo com Authorize feito
 
@@ -1162,7 +1176,7 @@ aws --endpoint-url=http://localhost:4566 dynamodb delete-item \
 
 ```bash
 docker compose down -v       # remove os volumes (zera DynamoDB + estado do Terraform)
-docker compose up -d         # sobe a infra e reprovisiona do zero
+docker compose up -d         # sobe infra + backend; a tabela é recriada pelo backend no startup
 ```
 
 Depois reinicie o app (`uvicorn app.main:app --reload`) — o seed admin sobe junto.

@@ -17,19 +17,27 @@ O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. Para o ambient
 ### Opção recomendada: Docker Compose na raiz
 
 A forma mais simples de subir a infra é pelo `docker-compose.yml` na **raiz** do
-repositório, que orquestra `infra` (Ministack), `provision` (Terraform one-shot)
-e `backend`. Da raiz do projeto:
+repositório, que orquestra `infra` (Ministack) e `backend`. Da raiz do projeto:
 
 ```bash
 docker compose up -d
 ```
 
-O serviço `provision` roda os arquivos desta pasta via [`provision.sh`](provision.sh)
-e cria a tabela `user` e seus índices (`email-index`, `username-index`) **apenas
-na primeira vez** — se a infra já estiver provisionada (estado no volume
-`tfstate`), ele sai sem rodar o Terraform. O container `infra` também não é
-recriado entre `up`s enquanto a config não muda, e o DynamoDB persiste no volume
-`ministack-data`. Veja o [README da raiz](../README.md) para o fluxo completo.
+Em dev, o backend cria a tabela `user` e seus índices (`email-index`,
+`username-index`) automaticamente no startup (lifespan) — não é preciso
+provisionar manualmente. O container `infra` não é recriado entre `up`s enquanto
+a config não muda, e o DynamoDB persiste no volume `ministack-data`.
+
+O provisionamento via **Terraform** continua disponível como passo **opcional**,
+isolado no profile `provision` (fora do caminho crítico, para que uma falha não
+derrube o stack). Ele roda os arquivos desta pasta via [`provision.sh`](provision.sh)
+e cria a tabela apenas se ainda não existir (estado no volume `tfstate`):
+
+```bash
+docker compose --profile provision up provision
+```
+
+Veja o [README da raiz](../README.md) para o fluxo completo.
 
 ### Opção alternativa: Terraform direto no host
 
