@@ -32,7 +32,7 @@ def provider(settings: Settings) -> JwtTokenProvider:
 
 
 class TestJwtTokenProvider:
-    # CT-01: access token contém claims sub, scopes, principal_type, exp
+    # CT-01: access token contém claims sub, scopes, principal_type, type, exp
     def test_access_token_contem_claims_obrigatorios(
         self, provider: JwtTokenProvider
     ) -> None:
@@ -42,6 +42,7 @@ class TestJwtTokenProvider:
         assert payload["sub"] == USER_ID
         assert payload["scopes"] == SCOPES
         assert payload["principal_type"] == "user"
+        assert payload["type"] == "access"
         assert "exp" in payload
 
     # CT-01b: header carrega kid e alg RS256 (para o JWKS casar a chave)
@@ -63,9 +64,10 @@ class TestJwtTokenProvider:
 
         assert payload["sub"] == "metrics-service"
         assert payload["principal_type"] == "service"
+        assert payload["type"] == "access"
         assert payload["scopes"] == ["metrics:read"]
 
-    # CT-02: refresh token contém claims sub, scopes e exp
+    # CT-02: refresh token contém claims sub, scopes, type e exp
     def test_refresh_token_contem_claims_obrigatorios(
         self, provider: JwtTokenProvider
     ) -> None:
@@ -74,6 +76,7 @@ class TestJwtTokenProvider:
 
         assert payload["sub"] == USER_ID
         assert payload["scopes"] == SCOPES
+        assert payload["type"] == "refresh"
         assert "exp" in payload
 
     def test_refresh_token_sem_scopes_default_lista_vazia(

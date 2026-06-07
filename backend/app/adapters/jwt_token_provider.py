@@ -28,7 +28,7 @@ class JwtTokenProvider(TokenProvider):
         self._headers = {"kid": settings.jwt_kid}
 
     def generate_access_token(self, user_id: str, scopes: list[str]) -> str:
-        """Gera um JWT de acesso com claims sub, scopes, principal_type e exp."""
+        """Gera um JWT de acesso com claims sub, scopes, principal_type, type e exp."""
         expire = datetime.now(timezone.utc) + timedelta(
             minutes=self._settings.access_token_expire_minutes
         )
@@ -36,6 +36,7 @@ class JwtTokenProvider(TokenProvider):
             "sub": user_id,
             "scopes": scopes,
             "principal_type": "user",
+            "type": "access",
             "exp": expire,
         }
         # Optionally include user email in the token if a user repository is available
@@ -58,7 +59,7 @@ class JwtTokenProvider(TokenProvider):
     def generate_refresh_token(
         self, user_id: str, scopes: list[str] | None = None
     ) -> str:
-        """Gera um JWT de refresh com claims sub, scopes, principal_type e exp."""
+        """Gera um JWT de refresh com claims sub, scopes, principal_type, type e exp."""
         expire = datetime.now(timezone.utc) + timedelta(
             days=self._settings.refresh_token_expire_days
         )
@@ -66,6 +67,7 @@ class JwtTokenProvider(TokenProvider):
             "sub": user_id,
             "scopes": scopes or [],
             "principal_type": "user",
+            "type": "refresh",
             "exp": expire,
         }
         token: str = jwt.encode(
@@ -81,7 +83,8 @@ class JwtTokenProvider(TokenProvider):
 
         Carrega `principal_type=service` e `sub=client_id` — distingue
         identidade de máquina de identidade de pessoa. Sem refresh token
-        (padrão OAuth2 para client_credentials).
+        (padrão OAuth2 para client_credentials). Marca `type=access` por ser
+        um token de acesso (de máquina).
         """
         expire = datetime.now(timezone.utc) + timedelta(
             minutes=self._settings.access_token_expire_minutes
@@ -90,6 +93,7 @@ class JwtTokenProvider(TokenProvider):
             "sub": client_id,
             "scopes": scopes,
             "principal_type": "service",
+            "type": "access",
             "exp": expire,
         }
         token: str = jwt.encode(
