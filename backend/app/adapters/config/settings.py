@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     seed_admin_email: str = "admin@local.dev"
     seed_admin_password: str = "Admin@123"
 
+    seed_manager_email: str = "manager@local.dev"
+    seed_manager_password: str = "Manager@123"
+
     # Clientes de serviço (OAuth2 client_credentials — US-28 parte 2).
     #
     # Multi-cliente: defina SERVICE_CLIENTS como um JSON, ex.:

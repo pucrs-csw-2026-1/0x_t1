@@ -26,20 +26,29 @@ from app.ports.user_repository import UserRepository  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
-def _seed_root_admin(user_repo: UserRepository) -> None:
-    if user_repo.find_by_email(Email(settings.seed_admin_email)) is not None:
+def _seed_user(
+    user_repo: UserRepository,
+    *,
+    first_name: str,
+    last_name: str,
+    username: str,
+    email: str,
+    password: str,
+    role: Role,
+) -> None:
+    if user_repo.find_by_email(Email(email)) is not None:
         return  # idempotente — já existe
 
     service = UserService(user_repo=user_repo)
     user = service.register(
-        first_name="Admin",
-        last_name="Root",
-        username="admin.root",
-        email=settings.seed_admin_email,
-        password=settings.seed_admin_password,
+        first_name=first_name,
+        last_name=last_name,
+        username=username,
+        email=email,
+        password=password,
     )
 
-    user.change_role(Role.ADMIN)
+    user.change_role(role)
     user_repo.save(user)
 
 
@@ -74,17 +83,32 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
                 exc,
             )
         try:
-            _seed_root_admin(
-                user_repo=DynamoUserRepository(
-                    table_name=settings.dynamodb_table_users
-                ),
+            repo = DynamoUserRepository(table_name=settings.dynamodb_table_users)
+            _seed_user(
+                repo,
+                first_name="Admin",
+                last_name="Root",
+                username="admin.root",
+                email=settings.seed_admin_email,
+                password=settings.seed_admin_password,
+                role=Role.ADMIN,
+            )
+            _seed_user(
+                repo,
+                first_name="Manager",
+                last_name="Root",
+                username="manager.root",
+                email=settings.seed_manager_email,
+                password=settings.seed_manager_password,
+                role=Role.MANAGER,
             )
             logger.info(
-                "[lifespan] root admin garantido (%s)",
+                "[lifespan] root admin (%s) e manager (%s) garantidos",
                 settings.seed_admin_email,
+                settings.seed_manager_email,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.warning("[lifespan] falhou ao seedar admin: %s", exc)
+            logger.warning("[lifespan] falhou ao seedar usuários: %s", exc)
     yield
 
 

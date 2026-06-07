@@ -1,0 +1,36 @@
+meta {
+  name: 12b Login Seed Manager (200)
+  type: http
+  seq: 13
+}
+
+post {
+  url: {{baseUrl}}/auth/login
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  username: {{seed_manager_email}}
+  password: {{seed_manager_password}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.access_token: isDefined
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("seed_manager_access_token", res.body.access_token);
+  }
+}
+
+docs {
+  Login como o manager root seedado pelo lifespan (manager@local.dev).
+
+  Pre-condicao: app subiu com app_env=development, o lifespan
+  garantiu o manager root no DDB (ver backend/app/main.py
+  _seed_user com role=MANAGER). Login com seed_manager_email +
+  seed_manager_password retorna token com scopes=["participant","manager"].
+}
