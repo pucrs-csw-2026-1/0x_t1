@@ -1,0 +1,4 @@
+# Garante LF nos scripts de shell em qualquer SO. Sem isto, clones no Windows
+# com core.autocrlf=true gravam CRLF e o /bin/sh dentro dos containers falha
+# (ex.: provision.sh saindo com erro/exit 2).
+*.sh text eol=lf

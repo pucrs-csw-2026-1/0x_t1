@@ -4,17 +4,20 @@
 #   infra      Emulador AWS (Ministack) com DynamoDB local na porta 4566. O
 #              estado fica em volume nomeado e o container NÃO é recriado entre
 #              `up`s enquanto a config não muda (idempotência do Compose).
-#   provision  Provisionamento one-shot via Terraform (infra/provision.sh).
-#              Só roda `terraform apply` se a infra ainda não existir; caso
-#              contrário sai imediatamente.
-#   backend    API FastAPI (Auth Service). Sobe só depois do provisionamento
-#              concluir com sucesso e aponta para o DynamoDB do serviço `infra`.
+#   provision  Provisionamento OPCIONAL via Terraform (infra/provision.sh),
+#              isolado no profile `provision` — NÃO sobe no `up` padrão. Em dev
+#              o backend já garante a tabela no startup (lifespan), então o
+#              provision serve só para exercitar o IaC sob demanda. Mantê-lo fora
+#              do caminho crítico evita que uma falha dele derrube o stack todo.
+#   backend    API FastAPI (Auth Service). Sobe assim que o `infra` fica
+#              saudável (healthcheck) e aponta para o DynamoDB do serviço `infra`.
 #
 # Uso:
-#   docker compose up -d         # sobe tudo (provisiona só na primeira vez)
-#   docker compose up -d backend # reconstrói/reinicia só o backend
-#   docker compose down          # para os containers (mantém os volumes/dados)
-#   docker compose down -v       # para e apaga os dados (zera a infra)
+#   docker compose up -d                              # sobe infra + backend
+#   docker compose up -d backend                      # reconstrói/reinicia só o backend
+#   docker compose --profile provision up provision   # roda o Terraform sob demanda
+#   docker compose down                               # para os containers (mantém os dados)
+#   docker compose down -v                            # para e apaga os dados (zera a infra)
 name: auth-service
 
 services:
@@ -32,12 +35,30 @@ services:
     volumes:
       - ministack-data:/var/lib/localstack
     restart: unless-stopped
+    # A imagem do Ministack só tem python3 (sem curl/wget), então o healthcheck
+    # consulta o endpoint de saúde do LocalStack via urllib.
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:4566/_localstack/health').getcode()==200 else 1)"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
 
   provision:
     image: hashicorp/terraform:1.9
     container_name: auth-provision
+    # Opt-in: só sobe com `--profile provision`. Fora do `up` padrão para que
+    # uma falha de provisionamento não bloqueie o backend (que cria a tabela
+    # sozinho em dev via lifespan).
+    profiles:
+      - provision
     depends_on:
-      - infra
+      infra:
+        condition: service_healthy
     environment:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
@@ -57,8 +78,8 @@ services:
       dockerfile: Dockerfile
     container_name: auth-backend
     depends_on:
-      provision:
-        condition: service_completed_successfully
+      infra:
+        condition: service_healthy
     ports:
       - "8080:8080"
     environment:
