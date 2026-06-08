@@ -1,3 +1,5 @@
+import logging
+
 from app.adapters.bcrypt_password_hasher import BcryptPasswordHasher
 from app.domain.access_level import Role
 from app.domain.exceptions import (
@@ -18,7 +20,10 @@ from app.domain.user import (
 )
 from app.ports.password_hasher import PasswordHasher
 from app.ports.refresh_token_repository import RefreshTokenRepository
+from app.ports.user_event_publisher import UserEventPublisher
 from app.ports.user_repository import UserPage, UserRepository
+
+logger = logging.getLogger(__name__)
 
 
 class UserService:
@@ -27,10 +32,30 @@ class UserService:
         user_repo: UserRepository,
         password_hasher: PasswordHasher | None = None,
         refresh_token_repo: RefreshTokenRepository | None = None,
+        event_publisher: UserEventPublisher | None = None,
     ) -> None:
         self._user_repo = user_repo
         self._hasher: PasswordHasher = password_hasher or BcryptPasswordHasher()
         self._refresh_token_repo = refresh_token_repo
+        self._event_publisher = event_publisher
+
+    def _publish_profile_changed(self, user: User) -> None:
+        """Publica ``UserProfileChanged`` de forma best-effort.
+
+        Falha na publicação é logada e ignorada: o ciclo de
+        cadastro/atualização do usuário nunca é quebrado por indisponibilidade
+        da mensageria. Sem publisher injetado, é no-op.
+        """
+        if self._event_publisher is None:
+            return
+        try:
+            self._event_publisher.publish_profile_changed(user)
+        except Exception:
+            logger.warning(
+                "Falha ao publicar UserProfileChanged para user=%s; ignorado.",
+                user.id,
+                exc_info=True,
+            )
 
     def get_user_by_id(self, user_id: str) -> User:
         """Busca e retorna o usuário pelo ID.
@@ -109,6 +134,8 @@ class UserService:
         )
 
         saved = self._user_repo.save(user)
+        # Novo usuário → publica o perfil (best-effort) para consumidores.
+        self._publish_profile_changed(saved)
         return saved
 
     def update_profile(
@@ -157,10 +184,17 @@ class UserService:
                 last_name if last_name is not None else user.last_name,
             )
 
-        if any(v is not None for v in (age, area, gender, city)):
+        demographics_changed = any(v is not None for v in (age, area, gender, city))
+        if demographics_changed:
             user.change_demographics(age=age, area=area, gender=gender, city=city)
 
-        return self._user_repo.save(user)
+        saved = self._user_repo.save(user)
+        # Só publica quando a demografia mudou — o evento existe para alimentar
+        # métricas demográficas; mudanças de nome/email/username não interessam
+        # ao consumidor (Metrics).
+        if demographics_changed:
+            self._publish_profile_changed(saved)
+        return saved
 
     def change_password(
         self,
@@ -209,6 +243,7 @@ class UserService:
 
         user = self.get_user_by_id(target_user_id)
 
+        role_changed = access_level is not None
         if access_level is not None:
             user.change_role(access_level)
 
@@ -218,7 +253,12 @@ class UserService:
             else:
                 user.deactivate()
 
-        return self._user_repo.save(user)
+        saved = self._user_repo.save(user)
+        # access_level (papel) faz parte do payload demográfico do Metrics —
+        # publica quando o papel muda. Mudança apenas de is_active não publica.
+        if role_changed:
+            self._publish_profile_changed(saved)
+        return saved
 
     def deactivate(self, user_id: str) -> User:
         """Desativa um usuário (soft delete). Bloqueia logins e refreshes.

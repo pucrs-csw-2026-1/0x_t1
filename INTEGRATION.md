@@ -146,8 +146,57 @@ Cada cliente de serviço recebe os scopes concedidos a ele. **Convenção:**
 
 1. Usuário chama o Metrics com `Authorization: Bearer <user_token>`.
 2. Metrics valida o token via JWKS (§2) e checa `scopes`.
-3. Para enriquecer com demografia, o Metrics obtém um **token de serviço** (§3) e
-   chama `GET {AUTH_URL}/users/...` (ou o endpoint que o Auth expuser) com esse
-   token, desde que tenha o scope `user:read`.
+3. Para enriquecer com demografia, o caminho preferido é **assíncrono**: o Metrics
+   consome o evento `UserProfileChanged` publicado pelo Auth (ver §8) e mantém um
+   cache local. (Alternativa síncrona: obter um **token de serviço** (§3) e chamar
+   `GET {AUTH_URL}/users/...` com scope `user:read`.)
 4. Mesmo padrão para ler de Event / Check-in / Registration — cada um validando o
    token de serviço do Metrics via JWKS e checando o scope.
+
+---
+
+## 8. Eventos publicados (SNS)
+
+Além da integração síncrona por JWT, o Auth **publica eventos de domínio** em um
+tópico **SNS** para consumidores assíncronos (fan-out por SQS). Isso mantém o Auth
+desacoplado: ele não conhece quem consome.
+
+### `UserProfileChanged`
+
+Publicado sempre que a **demografia** ou o **papel** (`access_level`) de um usuário
+é criado/alterado. É um *fat event*: carrega os dados inline, então o consumidor
+**não** precisa chamar o Auth de volta.
+
+- **Tópico:** `user-events` (ARN configurável via `SNS_USER_EVENTS_TOPIC_ARN`).
+- **Atributo de mensagem:** `event_type = "UserProfileChanged"`.
+- **Disparado em:** cadastro (`register`), atualização de perfil com mudança
+  demográfica (`update_profile`) e mudança de papel por admin (`admin_update`).
+
+**Payload (corpo da mensagem, JSON):**
+
+```json
+{
+  "event_type": "UserProfileChanged",
+  "user_id": "<uuid>",
+  "age": 27,
+  "area": "Engenharia",
+  "gender": "M",
+  "city": "Porto Alegre",
+  "access_level": "PARTICIPANT",
+  "occurred_at": "2026-06-08T12:00:00Z"
+}
+```
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `user_id` | string | id do usuário (= `sub` do token) |
+| `age` | número \| null | `0–150`; `null` se não informado |
+| `area` | string \| null | área de atuação |
+| `gender` | `F`\|`M`\|`OUTRO`\|`NAO_INFORMADO` \| null | |
+| `city` | string \| null | |
+| `access_level` | `PARTICIPANT`\|`MANAGER`\|`ADMIN` | papel atual |
+| `occurred_at` | string (ISO 8601 UTC) | momento da publicação |
+
+> **Garantia de entrega:** a publicação é **best-effort** — uma falha de SNS é
+> logada mas **não** quebra o cadastro/atualização. Consumidores devem tolerar
+> eventos eventualmente perdidos (ex.: reconciliação periódica via `GET /users`).

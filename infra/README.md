@@ -8,9 +8,9 @@ O serviço utiliza **Amazon DynamoDB** como banco de dados NoSQL. Para o ambient
 
 | Componente | Função |
 | --- | --- |
-| **Ministack** | Container que emula os serviços AWS (neste serviço, apenas DynamoDB) na porta `4566` |
-| **Terraform** | Provisiona a tabela `user` e seus índices secundários no Ministack |
-| **AWS provider** | Aponta para o endpoint local (`http://localhost:4566`) com credenciais fictícias (`test`/`test`) |
+| **Ministack** | Container que emula os serviços AWS (DynamoDB e SNS) na porta `4566` |
+| **Terraform** | Provisiona a tabela `user` (+ índices) e o tópico SNS `user-events` no Ministack |
+| **AWS provider** | Aponta para o endpoint local (`http://localhost:4566`) com credenciais fictícias (`test`/`test`); o mesmo endpoint serve DynamoDB e SNS |
 
 ## Configuração e Instalação
 
@@ -28,14 +28,26 @@ Em dev, o backend cria a tabela `user` e seus índices (`email-index`,
 provisionar manualmente. O container `infra` não é recriado entre `up`s enquanto
 a config não muda, e o DynamoDB persiste no volume `ministack-data`.
 
+> **Atenção (US-29):** o backend **não** cria o tópico SNS `user-events` no
+> startup — só a tabela DynamoDB. Para o tópico existir (e o evento
+> `UserProfileChanged` ser publicado de fato), é preciso rodar o Terraform via
+> profile `provision` abaixo. Sem o tópico, a publicação é no-op best-effort
+> (logada, sem quebrar o cadastro).
+
 O provisionamento via **Terraform** continua disponível como passo **opcional**,
 isolado no profile `provision` (fora do caminho crítico, para que uma falha não
 derrube o stack). Ele roda os arquivos desta pasta via [`provision.sh`](provision.sh)
-e cria a tabela apenas se ainda não existir (estado no volume `tfstate`):
+e cria a tabela `user` e o tópico `user-events` apenas se ainda não existirem
+(estado no volume `tfstate`):
 
 ```bash
 docker compose --profile provision up provision
 ```
+
+> **Caveat do fast-path:** o [`provision.sh`](provision.sh) pula o Terraform se o
+> state já contém `aws_dynamodb_table`. Em um volume `tfstate` provisionado antes
+> da US-29, o tópico SNS **não** será criado até reprovisionar do zero
+> (`docker compose down -v` e subir de novo).
 
 Veja o [README da raiz](../README.md) para o fluxo completo.
 
@@ -56,12 +68,13 @@ terraform init
 terraform apply
 ```
 
-### (Opcional) Verifique a tabela
+### (Opcional) Verifique a tabela e o tópico
 
-Com a [AWS CLI](https://docs.aws.amazon.com/cli/) instalada, é possível inspecionar o estado do DynamoDB local:
+Com a [AWS CLI](https://docs.aws.amazon.com/cli/) instalada, é possível inspecionar o estado do Ministack local:
 
 ```bash
 aws --endpoint-url=http://localhost:4566 dynamodb list-tables
+aws --endpoint-url=http://localhost:4566 sns list-topics      # deve listar user-events
 ```
 
 ### Encerrando
@@ -130,3 +143,27 @@ O papel é um **enum no código** (`Role`), não um registro de banco. Os scopes
 do JWT são derivados do papel de forma **cumulativa** (ADMIN ⊇ MANAGER ⊇
 PARTICIPANT). Não há tabela de catálogo nem integridade referencial a manter —
 a validade do valor é garantida pelo backend (Pydantic + domínio).
+
+## Mensageria — Tópico SNS (US-29)
+
+Além do DynamoDB, a infra provisiona um **tópico SNS** para a integração
+assíncrona entre microsserviços. Definido em [`sns.tf`](sns.tf), com o endpoint
+SNS do provider apontando para o mesmo Ministack (`http://localhost:4566`).
+
+| Recurso | Nome | Função |
+| --- | --- | --- |
+| `aws_sns_topic` | `user-events` | Tópico onde o Auth publica eventos de usuário |
+
+### Evento `UserProfileChanged`
+
+O Auth publica neste tópico sempre que a **demografia** (`age`, `area`,
+`gender`, `city`) ou o **papel** (`access_level`) de um usuário é criado/alterado
+(via `register`, `update_profile` ou `admin_update`). Consumidores (ex.: o
+microsserviço Metrics) assinam o tópico via SQS para enriquecer suas métricas —
+o fan-out por SNS mantém o Auth desacoplado de quem consome.
+
+- **ARN (Ministack):** `arn:aws:sns:us-east-1:000000000000:user-events`,
+  configurável via `SNS_USER_EVENTS_TOPIC_ARN`.
+- **Publicação best-effort:** uma falha de SNS é logada mas não quebra o
+  cadastro/atualização.
+- **Contrato completo do payload:** ver [INTEGRATION.md §8](../INTEGRATION.md).

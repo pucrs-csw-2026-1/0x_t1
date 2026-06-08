@@ -25,7 +25,10 @@ provider "aws" {
   skip_metadata_api_check     = true
   skip_requesting_account_id  = true
 
+  # O Ministack/LocalStack multiplexa todos os serviços no mesmo endpoint
+  # (porta 4566), então o SNS reusa o valor de `dynamodb_endpoint`.
   endpoints {
     dynamodb = var.dynamodb_endpoint
+    sns      = var.dynamodb_endpoint
   }
 }

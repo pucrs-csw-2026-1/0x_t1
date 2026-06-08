@@ -99,6 +99,12 @@ Cada feature abaixo cita a User Story (US) que a implementou.
 | Atualizar `access_level` ou `is_active` de outro usuário | US-18 | `PATCH /admin/users/{user_id}` |
 | Desativar outro usuário (admin não desativa a si mesmo → 400) | US-18 | `DELETE /admin/users/{user_id}` |
 
+### Integração assíncrona (eventos)
+
+| Funcionalidade | US | Detalhe |
+|---|---|---|
+| Publicação de `UserProfileChanged` via SNS | US-29 | Ao criar/atualizar a demografia (`POST /users/register`, `PATCH /users/me`) ou mudar o papel (`PATCH /admin/users/{id}`), o Auth publica um *fat event* no tópico SNS `user-events`. É **best-effort**: falha de publicação é logada mas não quebra o cadastro/atualização. Consumido por outros serviços (ex.: Metrics) via SQS. Contrato em [INTEGRATION.md §8](INTEGRATION.md) |
+
 ### Qualidade
 
 | Funcionalidade | US | Detalhe |
@@ -122,6 +128,7 @@ Cada feature abaixo cita a User Story (US) que a implementou.
 | Testes | [pytest](https://docs.pytest.org/) + [pytest-asyncio](https://pytest-asyncio.readthedocs.io/) + [httpx](https://www.python-httpx.org/) |
 | Mock DynamoDB | [moto](https://docs.getmoto.org/en/latest/) |
 | Banco de dados | [Amazon DynamoDB](https://aws.amazon.com/dynamodb/) via [boto3](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html) |
+| Mensageria (eventos) | [Amazon SNS](https://aws.amazon.com/sns/) via boto3 — fan-out de eventos de usuário (Ministack em dev) |
 | Autenticação | OAuth2 (FastAPI) + JWT ([python-jose](https://python-jose.readthedocs.io/)) + bcrypt ([passlib](https://passlib.readthedocs.io/)) |
 
 ---
@@ -193,7 +200,8 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 │   │   │   ├── user_repository.py           # Interface: UserRepository
 │   │   │   ├── token_provider.py            # Interface: TokenProvider
 │   │   │   ├── password_hasher.py           # Interface: PasswordHasher
-│   │   │   └── refresh_token_repository.py  # Interface: RefreshTokenRepository
+│   │   │   ├── refresh_token_repository.py  # Interface: RefreshTokenRepository
+│   │   │   └── user_event_publisher.py      # Interface: UserEventPublisher (eventos SNS)
 │   │   │
 │   │   ├── application/                     # Camada de Aplicação (Use Cases)
 │   │   │   ├── auth_service.py              # Login, refresh, logout
@@ -210,6 +218,7 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 │   │       ├── dynamo_user_repository.py    # UserRepository -> DynamoDB (boto3)
 │   │       ├── in_memory_refresh_token_repository.py  # RefreshTokenRepository in-memory (dev)
 │   │       ├── jwt_token_provider.py        # TokenProvider -> python-jose
+│   │       ├── sns_user_event_publisher.py  # UserEventPublisher -> Amazon SNS (boto3)
 │   │       └── bcrypt_password_hasher.py    # PasswordHasher -> passlib/bcrypt
 │   │
 │   ├── tests/
@@ -226,6 +235,8 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 │   │   ├── test_admin_router.py             # Rotas /admin/*
 │   │   ├── test_dependencies.py             # get_current_user, require_scope
 │   │   ├── test_route_auth_audit.py         # Auditoria de quais rotas exigem token
+│   │   ├── test_sns_user_event_publisher.py # Adapter SNS (publicação do evento)
+│   │   ├── test_user_event_publishing.py    # Ganchos de publicação no UserService (US-29)
 │   │   └── test_system_auth_flow.py         # Fluxo ponta-a-ponta (register -> login -> me -> refresh -> logout)
 │   │
 │   ├── .env.example                         # Exemplo de variáveis de ambiente
@@ -234,7 +245,7 @@ Isso garante o **Dependency Inversion Principle**: os use cases dependem da ABC 
 │   └── requirements-dev.txt                 # Dependências de desenvolvimento
 │
 ├── bruno/                                   # Smoke tests HTTP (coleção Bruno) + environments
-├── infra/                                   # IaC (Ministack + DynamoDB), provision.sh + diagrama do banco (db_model.png)
+├── infra/                                   # IaC (Ministack + DynamoDB + SNS), provision.sh + diagrama do banco (db_model.png)
 ├── docker-compose.yml                       # Orquestra infra + backend (provision Terraform opcional, via profile)
 ├── .github/                                 # Workflows CI/CD (ci, cd, pr-gate, sync-dev)
 ├── .ai_log/                                 # Logs dos prompts de IA usados no desenvolvimento (req. da disciplina)
@@ -964,7 +975,7 @@ O backlog do projeto, mantido nas [Issues do GitHub](https://github.com/pucrs-cs
 | **Domínio** | Camada pura com as regras que o resto do sistema respeita | `app/domain/` | US-01 (validação) · US-02 (mensagens de erro) |
 | **Persistência** | Armazenamento seguro dos dados de usuários e das senhas | `app/ports/user_repository.py` + `app/adapters/dynamo_user_repository.py` + `app/adapters/bcrypt_password_hasher.py` | US-03 (UserRepository + DynamoDB) · US-04 (bcrypt) |
 | **Autenticação** | Fluxo OAuth2 completo (emissão e gerenciamento de tokens) | `app/adapters/jwt_token_provider.py` + `app/application/auth_service.py` + `app/adapters/api/auth_router.py` | US-05 (JWT) · US-06 (login) · US-07 (refresh) · US-08 (logout) |
-| **Usuários** | Endpoints de criação de conta e manipulação do próprio perfil | `app/application/user_service.py` + `app/adapters/api/user_router.py` (rotas `/users/*`) | US-09 (cadastro) · US-10 (consulta) · US-15 (atualização) · US-16 (senha) · US-17 (desativação) |
+| **Usuários** | Endpoints de criação de conta e manipulação do próprio perfil | `app/application/user_service.py` + `app/adapters/api/user_router.py` (rotas `/users/*`) | US-09 (cadastro) · US-10 (consulta) · US-15 (atualização) · US-16 (senha) · US-17 (desativação) · US-29 (publica `UserProfileChanged` via SNS) |
 | **Autorização** | Proteção de rotas por autenticação e restrição por perfil | `app/adapters/api/dependencies.py` (`get_current_user`, `Security` scopes) + `app/adapters/api/admin_router.py` (rotas `/admin/*`) | US-11 (Bearer gate) · US-12 (scope per profile) · US-13/US-27 (papel enum + scopes cumulativos + descarte de auto-promoção) · US-14 (listing) · US-18 (admin CRUD) |
 
 **Critério arquitetural por trás da divisão:** cada épico corresponde a uma camada ou *concern* isolável da arquitetura hexagonal, o que permite que uma feature branch (`feat/us-XX`) tenha escopo bem delimitado dentro de uma única camada. Isso reduz conflito de merge entre PRs paralelas (uma equipe pode trabalhar em Persistência enquanto outra mexe em Autenticação sem se tocarem) e simplifica revisão (o reviewer sabe a priori que tipo de mudança esperar).
@@ -1130,6 +1141,27 @@ docker compose up -d infra
 ```
 
 Se preferir provisionar via Terraform, rode o profile opcional: `docker compose --profile provision up provision`. E reiniciar o app. O `--reload` do uvicorn detecta o arquivo mas pode não disparar o lifespan novamente — `Ctrl+C` e re-execução são mais seguros.
+
+#### Cadastrei/atualizei um usuário, mas o consumidor (ex.: Metrics) não recebeu o evento
+
+**Sintoma:** o cadastro/atualização retorna 2xx normalmente, mas nenhum
+`UserProfileChanged` chega ao consumidor.
+
+**Causa:** a publicação é **best-effort** (US-29) — se o tópico SNS `user-events`
+não existir, o `publish` falha, é logado como warning e o fluxo segue. No `up`
+padrão o backend cria só a tabela DynamoDB (lifespan); o **tópico SNS** é
+provisionado pelo Terraform, que está no profile opcional `provision`.
+
+**Solução:**
+
+```bash
+docker compose --profile provision up provision   # cria o tópico user-events
+```
+
+> Se o volume `tfstate` já estava provisionado (só DynamoDB), o fast-path do
+> [`provision.sh`](infra/provision.sh) pula o Terraform e o tópico não é criado.
+> Nesse caso, `docker compose down -v` e suba de novo para reprovisionar do zero.
+> Confira o tópico com `aws --endpoint-url=http://localhost:4566 sns list-topics`.
 
 #### Swagger retorna 401 mesmo com Authorize feito
 

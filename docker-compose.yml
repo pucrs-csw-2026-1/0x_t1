@@ -99,6 +99,9 @@ services:
       - RSA_PRIVATE_KEY_PATH=keys/dev_private.pem
       - RSA_PUBLIC_KEY_PATH=keys/dev_public.pem
       - JWT_KID=auth-dev-key
+      # Tópico SNS de eventos de usuário (US-29). ARN determinístico do
+      # Ministack; o publisher usa AWS_ENDPOINT_URL para alcançar o `infra`.
+      - SNS_USER_EVENTS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:user-events
     restart: unless-stopped
 
 volumes:
