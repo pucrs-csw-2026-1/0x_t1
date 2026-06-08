@@ -298,9 +298,11 @@ curl http://localhost:8080/health
 
 O backend roda no container já configurado (endpoint do DynamoDB, chaves RS256 de
 dev e seed do admin) — **não é preciso `.env` nem venv**. O container `infra`
-**não é recriado** entre `up`s enquanto a config não muda, e a tabela `user` é
-criada automaticamente pelo backend no startup (em dev). Para parar mantendo os
-dados use `docker compose down`; para zerar, `docker compose down -v`.
+**não é recriado** entre `up`s enquanto a config não muda, e tanto a tabela
+`user` quanto o tópico SNS `user-events` são criados automaticamente pelo backend
+no startup (em dev) — um `docker compose up` puro já deixa o fluxo de eventos de
+pé. Para parar mantendo os dados use `docker compose down`; para zerar,
+`docker compose down -v`.
 
 > **Provisionamento via Terraform é opcional.** O IaC fica no profile `provision`,
 > fora do caminho crítico — assim uma falha de provisionamento não derruba o
@@ -1147,21 +1149,26 @@ Se preferir provisionar via Terraform, rode o profile opcional: `docker compose 
 **Sintoma:** o cadastro/atualização retorna 2xx normalmente, mas nenhum
 `UserProfileChanged` chega ao consumidor.
 
-**Causa:** a publicação é **best-effort** (US-29) — se o tópico SNS `user-events`
-não existir, o `publish` falha, é logado como warning e o fluxo segue. No `up`
-padrão o backend cria só a tabela DynamoDB (lifespan); o **tópico SNS** é
-provisionado pelo Terraform, que está no profile opcional `provision`.
+**Causa:** a publicação é **best-effort** (US-29) — uma falha de SNS é logada e o
+fluxo segue. Em dev, o backend cria o tópico `user-events` automaticamente no
+startup (lifespan, igual à tabela DynamoDB), então o `up` padrão já basta. As
+causas prováveis de não receber são: (a) o Ministack estava fora do ar quando o
+app subiu — procure no log `[lifespan] falhou ao garantir tópico SNS`; ou (b)
+**não há consumidor assinando** o tópico (o consumidor é a US par no Metrics).
 
 **Solução:**
 
 ```bash
-docker compose --profile provision up provision   # cria o tópico user-events
+# 1) confirme que o tópico existe
+aws --endpoint-url=http://localhost:4566 sns list-topics   # deve listar user-events
+
+# 2) se faltar, reinicie o backend (o lifespan recria) ou rode o IaC opcional
+docker compose up -d --build backend
+# ou: docker compose --profile provision up provision
 ```
 
-> Se o volume `tfstate` já estava provisionado (só DynamoDB), o fast-path do
-> [`provision.sh`](infra/provision.sh) pula o Terraform e o tópico não é criado.
-> Nesse caso, `docker compose down -v` e suba de novo para reprovisionar do zero.
-> Confira o tópico com `aws --endpoint-url=http://localhost:4566 sns list-topics`.
+> Sem um consumidor assinando o tópico, o evento é publicado mas não há quem o
+> receba — isso é esperado até a US do consumidor (Metrics) estar no ar.
 
 #### Swagger retorna 401 mesmo com Authorize feito
 

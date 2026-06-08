@@ -18,6 +18,9 @@ from app.adapters.api.well_known_router import (  # noqa: E402
 )
 from app.adapters.config.settings import settings  # noqa: E402
 from app.adapters.dynamo_user_repository import DynamoUserRepository  # noqa: E402
+from app.adapters.sns_user_event_publisher import (  # noqa: E402
+    SnsUserEventPublisher,
+)
 from app.application.user_service import UserService  # noqa: E402
 from app.domain.access_level import Role  # noqa: E402
 from app.domain.user import Email  # noqa: E402
@@ -80,6 +83,22 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             logger.warning(
                 "[lifespan] falhou ao garantir tabela '%s': %s",
                 settings.dynamodb_table_users,
+                exc,
+            )
+        try:
+            SnsUserEventPublisher(
+                topic_arn=settings.sns_user_events_topic_arn,
+                endpoint_url=settings.aws_endpoint_url,
+                region_name=settings.aws_region,
+            ).ensure_topic()
+            logger.info(
+                "[lifespan] tópico SNS '%s' garantido",
+                settings.sns_user_events_topic_arn,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[lifespan] falhou ao garantir tópico SNS '%s': %s",
+                settings.sns_user_events_topic_arn,
                 exc,
             )
         try:
