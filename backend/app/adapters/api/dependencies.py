@@ -13,6 +13,7 @@ from app.adapters.in_memory_refresh_token_repository import (
     InMemoryRefreshTokenRepository,
 )
 from app.adapters.jwt_token_provider import JwtTokenProvider
+from app.adapters.sns_user_event_publisher import SnsUserEventPublisher
 from app.application.auth_service import AuthService
 from app.application.user_service import UserService
 from app.domain.exceptions import InvalidTokenError, TokenExpiredError
@@ -85,9 +86,15 @@ def require_scope(required_scope: str) -> Callable[..., str]:
 def get_user_service() -> UserService:
     """Constrói e retorna uma instância de UserService."""
     repo = DynamoUserRepository(table_name=settings.dynamodb_table_users)
+    event_publisher = SnsUserEventPublisher(
+        topic_arn=settings.sns_user_events_topic_arn,
+        endpoint_url=settings.aws_endpoint_url,
+        region_name=settings.aws_region,
+    )
     return UserService(
         user_repo=repo,
         refresh_token_repo=_refresh_token_repository,
+        event_publisher=event_publisher,
     )
 
 
