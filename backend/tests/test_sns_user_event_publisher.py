@@ -8,6 +8,9 @@ depender de um SNS real.
 import json
 from unittest.mock import MagicMock
 
+import boto3
+from moto import mock_aws
+
 from app.adapters.sns_user_event_publisher import SnsUserEventPublisher
 from app.domain.access_level import Role
 from app.domain.user import Email, Gender, HashedPassword, User, Username
@@ -82,3 +85,26 @@ def test_publish_demografia_ausente_serializa_null() -> None:
     assert message["city"] is None
     # cadastro público sempre PARTICIPANT
     assert message["access_level"] == "PARTICIPANT"
+
+
+# CT-29.4: ensure_topic cria pelo nome derivado do ARN (bootstrap dev)
+def test_ensure_topic_usa_nome_derivado_do_arn() -> None:
+    client = MagicMock()
+    publisher = SnsUserEventPublisher(topic_arn=_TOPIC, client=client)
+
+    publisher.ensure_topic()
+
+    client.create_topic.assert_called_once_with(Name="user-events")
+
+
+# CT-29.5: ensure_topic é idempotente — chamar 2x não falha e o tópico existe
+@mock_aws
+def test_ensure_topic_idempotente_com_sns_real() -> None:
+    publisher = SnsUserEventPublisher(topic_arn=_TOPIC, region_name="us-east-1")
+
+    publisher.ensure_topic()
+    publisher.ensure_topic()  # idempotente: não levanta
+
+    sns = boto3.client("sns", region_name="us-east-1")
+    topics = sns.list_topics()["Topics"]
+    assert any(t["TopicArn"].endswith(":user-events") for t in topics)
