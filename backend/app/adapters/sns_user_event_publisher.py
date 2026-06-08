@@ -47,6 +47,19 @@ class SnsUserEventPublisher(UserEventPublisher):
             },
         )
 
+    def ensure_topic(self) -> None:
+        """Cria o tópico SNS de forma idempotente (bootstrap defensivo em dev).
+
+        Espelha o ``auto_create`` da tabela DynamoDB: garante que o tópico
+        exista quando o app sobe num Ministack recém-criado, sem depender de um
+        ``terraform apply`` manual. ``create_topic`` é idempotente — se o tópico
+        já existe, retorna o ARN existente sem erro. O nome é derivado do último
+        segmento do ARN configurado. **Não** deve ser chamado em produção (a
+        infra é responsabilidade do IaC).
+        """
+        topic_name = self._topic_arn.rsplit(":", 1)[-1]
+        self._client.create_topic(Name=topic_name)
+
     @staticmethod
     def _to_message(user: User) -> dict[str, Any]:
         return {
