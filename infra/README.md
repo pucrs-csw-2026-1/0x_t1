@@ -28,11 +28,12 @@ Em dev, o backend cria a tabela `user` e seus índices (`email-index`,
 provisionar manualmente. O container `infra` não é recriado entre `up`s enquanto
 a config não muda, e o DynamoDB persiste no volume `ministack-data`.
 
-> **Atenção (US-29):** o backend **não** cria o tópico SNS `user-events` no
-> startup — só a tabela DynamoDB. Para o tópico existir (e o evento
-> `UserProfileChanged` ser publicado de fato), é preciso rodar o Terraform via
-> profile `provision` abaixo. Sem o tópico, a publicação é no-op best-effort
-> (logada, sem quebrar o cadastro).
+> **Bootstrap em dev (US-29):** assim como a tabela DynamoDB, o **tópico SNS
+> `user-events` é criado automaticamente pelo backend no startup** quando
+> `app_env=development` (chamada idempotente `ensure_topic` no lifespan). Por
+> isso um `docker compose up` puro já deixa o fluxo completo de pé — sem profile
+> extra. Em produção (`app_env` ≠ `development`) o backend **não** cria infra:
+> isso é responsabilidade do IaC abaixo.
 
 O provisionamento via **Terraform** continua disponível como passo **opcional**,
 isolado no profile `provision` (fora do caminho crítico, para que uma falha não
@@ -45,9 +46,10 @@ docker compose --profile provision up provision
 ```
 
 > **Caveat do fast-path:** o [`provision.sh`](provision.sh) pula o Terraform se o
-> state já contém `aws_dynamodb_table`. Em um volume `tfstate` provisionado antes
-> da US-29, o tópico SNS **não** será criado até reprovisionar do zero
-> (`docker compose down -v` e subir de novo).
+> state já contém `aws_dynamodb_table`. Isso não afeta o `up` padrão (o tópico já
+> é garantido pelo lifespan), mas significa que, num volume `tfstate` antigo, o
+> `provision` sozinho pode não recriar o tópico — use `docker compose down -v`
+> para reprovisionar do zero via Terraform, se quiser exercitar o IaC.
 
 Veja o [README da raiz](../README.md) para o fluxo completo.
 
@@ -167,3 +169,22 @@ o fan-out por SNS mantém o Auth desacoplado de quem consome.
 - **Publicação best-effort:** uma falha de SNS é logada mas não quebra o
   cadastro/atualização.
 - **Contrato completo do payload:** ver [INTEGRATION.md §8](../INTEGRATION.md).
+
+### Topic policy (segurança)
+
+O [`sns.tf`](sns.tf) define uma **topic policy estrita** (allow-list): só os
+principais declarados podem `Publish` (apenas o Auth) e `Subscribe` (apenas o
+Metrics). Isso fecha o fan-out para consumidores não autorizados e impede que um
+publisher forje eventos. Parametrizada por variáveis:
+
+| Variável | Default (dev) | Em produção |
+| --- | --- | --- |
+| `topic_publisher_principals` | conta `000000000000` | ARN da role IAM do Auth |
+| `topic_subscriber_principals` | conta `000000000000` | ARN da role IAM do Metrics |
+
+> O payload já é **minimizado** (sem e-mail/nome/senha — só UUID + demografia), e
+> o `access_level` do evento é **data-plane** no Metrics (não decide autorização).
+> A topic policy é a barreira de **transporte**. O Ministack/LocalStack não força
+> IAM por padrão, então em dev a policy é "policy as code" (documenta a intenção);
+> a aplicação efetiva ocorre na AWS. Para PII em repouso/trânsito, considere
+> habilitar **SSE/KMS** no tópico em produção.
