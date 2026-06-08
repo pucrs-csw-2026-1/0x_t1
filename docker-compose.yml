@@ -104,6 +104,36 @@ services:
       - SNS_USER_EVENTS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:user-events
     restart: unless-stopped
 
+  # Seed em massa de usuários demográficos (US-17). One-shot, opt-in via profile
+  # `seed` — NÃO sobe no `up` padrão. Reusa a imagem do backend (tem boto3).
+  # Grava ~25k usuários `user_{idx}_{seq}` na tabela `user` e publica uma amostra
+  # de UserProfileChanged → consumidos pelo Metrics (user-profile).
+  #   docker compose --profile seed run --rm seed-users
+  #   AUTH_SEED_FORCE=1 docker compose --profile seed run --rm seed-users
+  seed-users:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    profiles:
+      - seed
+    depends_on:
+      infra:
+        condition: service_healthy
+    environment:
+      - AWS_ENDPOINT_URL=http://infra:4566
+      - AWS_REGION=us-east-1
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - DYNAMODB_TABLE_USERS=user
+      - SNS_USER_EVENTS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:user-events
+      - AUTH_SEED_FORCE=${AUTH_SEED_FORCE:-}
+    volumes:
+      - ./infra/seed:/seed
+    working_dir: /seed
+    command: ["python", "seed_users.py"]
+    restart: "no"
+
 volumes:
   ministack-data:
   tfstate:
