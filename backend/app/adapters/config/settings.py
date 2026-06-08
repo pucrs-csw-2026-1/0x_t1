@@ -37,6 +37,11 @@ class Settings(BaseSettings):
 
     dynamodb_table_users: str = "user"
 
+    # Tópico SNS onde o Auth publica eventos de usuário (US-29). O default
+    # é o ARN determinístico do Ministack/LocalStack; em produção, sobrescreva
+    # via env (SNS_USER_EVENTS_TOPIC_ARN) com o ARN real do tópico.
+    sns_user_events_topic_arn: str = "arn:aws:sns:us-east-1:000000000000:user-events"
+
     seed_admin_email: str = "admin@local.dev"
     seed_admin_password: str = "Admin@123"
 

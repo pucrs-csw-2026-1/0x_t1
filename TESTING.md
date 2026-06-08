@@ -10,9 +10,9 @@ Os testes unitários isolam as camadas de aplicação e domínio substituindo os
 
 | Duble | O que faz | Onde é usado no projeto |
 |---|---|---|
-| **Stub** | Retorna respostas pré-definidas, sem lógica de verificação | `UserRepository` mockado: `find_by_email.return_value = valid_user` simula busca no DynamoDB sem acessá-lo |
+| **Stub** | Retorna respostas pré-definidas, sem lógica de verificação | `UserRepository` mockado: `find_by_email.return_value = valid_user` simula busca no DynamoDB sem acessá-lo. `FailingUserEventPublisher` ([`tests/fakes/user_event_publisher.py`](backend/tests/fakes/user_event_publisher.py)): sempre levanta erro, exercitando a política best-effort de publicação (US-29) |
 | **Mock** | Verifica que determinadas interações aconteceram (chamadas, argumentos) | `TokenProvider` mockado com `create_autospec`: confirma que `generate_access_token` foi chamado com `user_id` e `scopes` corretos |
-| **Spy** | Registra as chamadas recebidas para inspeção posterior, sem alterar comportamento | `PasswordHasher` espião: registra quantas vezes `hash()` foi invocado, garantindo que o cadastro hasheia exatamente uma vez |
+| **Spy** | Registra as chamadas recebidas para inspeção posterior, sem alterar comportamento | `PasswordHasher` espião: registra quantas vezes `hash()` foi invocado, garantindo que o cadastro hasheia exatamente uma vez. `SpyUserEventPublisher` ([`tests/fakes/user_event_publisher.py`](backend/tests/fakes/user_event_publisher.py)): registra os usuários publicados, verificando em quais ganchos o evento `UserProfileChanged` é emitido (US-29) |
 | **Fake** | Implementação funcional simplificada, usada quando stubs seriam complexos demais | [`tests/fakes/user_repository.py`](backend/tests/fakes/user_repository.py): `FakeUserRepository` é um dicionário em memória com `save`, `find_by_id`, `find_by_email`, `find_by_username`, `find_all` (com paginação determinística) |
 | **Dummy** | Objeto passado apenas para satisfazer assinatura, nunca é utilizado de fato | `access_level=[]` em testes que validam apenas autenticação, sem verificar autorização |
 
@@ -286,7 +286,8 @@ A cobertura mínima de **80%** é validada na pipeline CI (`--cov-fail-under=80`
 |---|---|---|---|
 | **Domain** (`app/domain/`) | Validação de `Email`, `Username`, `HashedPassword`, força de senha, regras de nome | Partição de equivalência + valor limite | [`tests/test_domain.py`](backend/tests/test_domain.py) |
 | **Application** (`app/application/`) | Fluxos de login, refresh, logout, cadastro, troca de senha, deactivate, CRUD admin | Transição de estado + cobertura de decisão | [`tests/test_auth_service.py`](backend/tests/test_auth_service.py), [`tests/test_user_service.py`](backend/tests/test_user_service.py) |
-| **Adapters de saída** (`app/adapters/*`) | Geração/validação JWT, hashing bcrypt, persistência DynamoDB com `moto` | Teste de exceção + valor limite (expiração, paginação) | [`tests/test_token_provider.py`](backend/tests/test_token_provider.py), [`tests/test_password_hasher.py`](backend/tests/test_password_hasher.py), [`tests/test_user_repository.py`](backend/tests/test_user_repository.py) |
+| **Adapters de saída** (`app/adapters/*`) | Geração/validação JWT, hashing bcrypt, persistência DynamoDB com `moto`, publicação de eventos SNS | Teste de exceção + valor limite (expiração, paginação) + verificação de contrato (payload do evento) | [`tests/test_token_provider.py`](backend/tests/test_token_provider.py), [`tests/test_password_hasher.py`](backend/tests/test_password_hasher.py), [`tests/test_user_repository.py`](backend/tests/test_user_repository.py), [`tests/test_sns_user_event_publisher.py`](backend/tests/test_sns_user_event_publisher.py) |
+| **Publicação de eventos** (US-29) | Em quais ganchos o `UserService` publica `UserProfileChanged` (register, update com demografia, admin com papel) e a política best-effort | Cobertura de decisão (branches de publicação) + teste de exceção (falha não propaga) | [`tests/test_user_event_publishing.py`](backend/tests/test_user_event_publishing.py) |
 | **Adapters de entrada** (`app/adapters/api/`) | Rotas FastAPI, contratos de request/response, mapeamento de exceções → HTTP, autenticação Bearer | Cobertura de decisão (status codes) + integração com `get_current_user` | [`tests/test_auth_router.py`](backend/tests/test_auth_router.py), [`tests/test_user_router.py`](backend/tests/test_user_router.py), [`tests/test_admin_router.py`](backend/tests/test_admin_router.py), [`tests/test_dependencies.py`](backend/tests/test_dependencies.py) |
 | **Auditoria de rotas** | Garantir que toda rota não-pública declare autenticação | Reflection sobre o router FastAPI | [`tests/test_route_auth_audit.py`](backend/tests/test_route_auth_audit.py) |
 | **Sistema (E2E)** | Fluxo ponta-a-ponta `register → login → me → refresh → logout` | Transição de estado em todas as camadas | [`tests/test_system_auth_flow.py`](backend/tests/test_system_auth_flow.py) |
@@ -300,8 +301,7 @@ backend/tests/
 ├── conftest.py                  # Fixtures globais (valid_user, ADMIN_UUID, USER_UUID, etc.)
 ├── fakes/                       # Test doubles in-memory dos ports
 │   ├── user_repository.py       # FakeUserRepository (dict em memória + paginação)
-│   ├── access_level_repository.py  # FakeAccessLevelRepository (catálogo fixo)
-│   └── refresh_token_repository.py # FakeRefreshTokenRepository (set de revogados)
+│   └── user_event_publisher.py  # SpyUserEventPublisher + FailingUserEventPublisher (US-29)
 │
 ├── test_domain.py               # Value objects e regras de validação
 ├── test_auth_service.py         # Use case de autenticação (login, refresh, logout)
@@ -316,7 +316,10 @@ backend/tests/
 ├── test_dependencies.py         # get_current_user, require_scope
 ├── test_route_auth_audit.py     # Auditoria automática de rotas com/sem proteção
 │
+├── test_sns_user_event_publisher.py  # Adapter SNS: contrato do payload (US-29)
+├── test_user_event_publishing.py     # Ganchos de publicação no UserService (US-29)
+│
 └── test_system_auth_flow.py     # Fluxo E2E ponta-a-ponta (TestClient + moto)
 ```
 
-**Total:** 13 arquivos de teste cobrindo ~144 casos, com cobertura mantida acima de 80% pela pipeline CI.
+**Total:** 15 arquivos de teste, com cobertura mantida acima de 80% pela pipeline CI.
