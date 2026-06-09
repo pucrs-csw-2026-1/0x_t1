@@ -304,6 +304,12 @@ no startup (em dev) — um `docker compose up` puro já deixa o fluxo de eventos
 pé. Para parar mantendo os dados use `docker compose down`; para zerar,
 `docker compose down -v`.
 
+> ⚠️ **Após alterar código do backend, suba com `docker compose up -d --build`.** O `up` puro só
+> builda quando a imagem ainda não existe; se ela já existir, o Compose **reaproveita a imagem
+> antiga** e ignora as mudanças. Diferente de outros serviços, o código do backend é **copiado
+> para dentro da imagem** (`COPY app` no Dockerfile, sem bind-mount) — então qualquer alteração de
+> código (ex.: novos usuários no seed do lifespan) só passa a valer com `--build`.
+
 > **Provisionamento via Terraform é opcional.** O IaC fica no profile `provision`,
 > fora do caminho crítico — assim uma falha de provisionamento não derruba o
 > stack. Para exercitar o Terraform explicitamente:
