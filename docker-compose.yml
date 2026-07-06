@@ -34,6 +34,7 @@ services:
       - PERSISTENCE=1
     volumes:
       - ministack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     # A imagem do Ministack só tem python3 (sem curl/wget), então o healthcheck
     # consulta o endpoint de saúde do LocalStack via urllib.
