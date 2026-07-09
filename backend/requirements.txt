@@ -1,4 +1,7 @@
-fastapi>=0.115.0
+# Teto <0.137: a 0.139.0 deixou de aplicar o prefix dos APIRouter em
+# include_router (registra /login em vez de /auth/login), quebrando o
+# roteamento e o test_route_auth_audit. A 0.136.3 (implantada) está correta.
+fastapi>=0.115.0,<0.137
 uvicorn[standard]>=0.34.0
 python-multipart>=0.0.9
 pydantic>=2.0.0

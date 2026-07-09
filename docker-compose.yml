@@ -34,6 +34,10 @@ services:
       - PERSISTENCE=1
     volumes:
       - ministack-data:/var/lib/localstack
+      # US-08: habilita infra real da Ministack — RDS sobe um container Postgres
+      # de verdade (endpoint host:port real), ECS/Lambda idem. Sem isto o RDS
+      # responde "available" mas não sobe Postgres (modo mock).
+      - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
     # A imagem do Ministack só tem python3 (sem curl/wget), então o healthcheck
     # consulta o endpoint de saúde do LocalStack via urllib.
